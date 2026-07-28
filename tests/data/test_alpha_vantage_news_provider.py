@@ -119,7 +119,7 @@ class TestFetchNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
 
-            result = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=3,
@@ -127,6 +127,7 @@ class TestFetchNewsWithRetry:
             )
 
             assert len(result) == 1
+            assert not fallback_used
             assert result[0].headline == "Test Headline"
             mock_get.assert_called_once()
 
@@ -135,7 +136,7 @@ class TestFetchNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=2,
@@ -143,6 +144,7 @@ class TestFetchNewsWithRetry:
             )
 
             assert result == []
+            assert not fallback_used
             # 1 initial + 2 retries on today + 6 fallback days * 3 retries each = 2 + 18 = 20
             # But the code does max_retries + 1 calls per date, so: 3 + 6 * 3 = 21
             assert mock_get.call_count == 21
@@ -177,7 +179,7 @@ class TestFetchNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = side_effect
 
-            result = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=0,
@@ -186,6 +188,7 @@ class TestFetchNewsWithRetry:
 
             assert len(result) == 1
             assert result[0].headline == "Fallback Headline"
+            assert fallback_used
 
 
 class TestFetchNewsWithFallback:
@@ -206,7 +209,7 @@ class TestFetchNewsWithFallback:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
+            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
                 api_key="test_key",
                 category="technology",
                 max_retries=1,
@@ -215,13 +218,14 @@ class TestFetchNewsWithFallback:
 
             assert len(result) == 1
             assert result[0].headline == "Fallback Headline"
+            assert fallback_used
 
     def test_returns_empty_without_fallback(self):
         """Should return empty list when no fallback data provided."""
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
+            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
                 api_key="test_key",
                 category="technology",
                 max_retries=1,
@@ -229,3 +233,4 @@ class TestFetchNewsWithFallback:
             )
 
             assert result == []
+            assert not fallback_used

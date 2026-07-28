@@ -116,7 +116,7 @@ class TestFetchCompanyNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
 
-            result = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
+            result, fallback_used = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
                 api_key="test_key",
                 symbol="AAPL",
                 max_retries=3,
@@ -125,6 +125,7 @@ class TestFetchCompanyNewsWithRetry:
 
             assert len(result) == 1
             assert result[0].headline == "Test Headline"
+            assert not fallback_used
             mock_get.assert_called_once()
 
     def test_returns_empty_on_failure(self):
@@ -132,7 +133,7 @@ class TestFetchCompanyNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
+            result, fallback_used = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
                 api_key="test_key",
                 symbol="AAPL",
                 max_retries=2,
@@ -140,5 +141,6 @@ class TestFetchCompanyNewsWithRetry:
             )
 
             assert result == []
+            assert not fallback_used
             # 1 initial + 2 retries on today + 6 fallback days * 3 retries each = 2 + 18 = 20
             assert mock_get.call_count == 21

@@ -44,7 +44,7 @@ class AlphaVantageNewsProvider:
         self,
         category: str,
         date: Optional[str] = None,
-    ) -> list[NewsItem]:
+    ) -> tuple[list[NewsItem], bool]:
         """Fetch news for a given category.
 
         Args:
@@ -115,7 +115,7 @@ def fetch_news_with_retry(
         fallback_days: How many days back to start falling back.
 
     Returns:
-        List of NewsItem objects.
+        Tuple of (list of NewsItem objects, bool indicating if fallback was used).
     """
     import logging
     import time
@@ -130,7 +130,7 @@ def fetch_news_with_retry(
             items = provider.fetch_news(category=category)
             if items:
                 logger.info(f"Fetched {len(items)} news items (today)")
-                return items
+                return items, False
             logger.warning(f"No news items returned for today, trying fallback")
         except Exception as e:
             last_exception = e
@@ -157,7 +157,7 @@ def fetch_news_with_retry(
                     logger.info(
                         f"Fetched {len(items)} news items (fallback: {date_str})"
                     )
-                    return items
+                    return items, True
                 logger.warning(
                     f"No news items for {date_str}, trying next fallback date"
                 )
@@ -179,7 +179,7 @@ def fetch_news_with_retry(
         f"Failed to fetch news after {max_retries} retries and "
         f"{fallback_days + 5} fallback days. Last error: {last_exception}"
     )
-    return []
+    return [], False
 
 
 def fetch_news_with_fallback(
@@ -187,7 +187,7 @@ def fetch_news_with_fallback(
     category: str,
     max_retries: int = 3,
     fallback_data: Optional[list[NewsItem]] = None,
-) -> list[NewsItem]:
+) -> tuple[list[NewsItem], bool]:
     """Fetch news with retry and optional static fallback data.
 
     Tries up to max_retries times with exponential backoff.
@@ -201,7 +201,7 @@ def fetch_news_with_fallback(
         fallback_data: Static data to return if API fails.
 
     Returns:
-        List of NewsItem objects.
+        Tuple of (list of NewsItem objects, bool indicating if fallback was used).
     """
     import logging
     import time
@@ -213,7 +213,7 @@ def fetch_news_with_fallback(
         try:
             items = provider.fetch_news(category=category)
             if items:
-                return items
+                return items, False
         except Exception as e:
             if attempt < max_retries:
                 delay = min(1.0 * (2 ** attempt), 60.0)
@@ -227,6 +227,6 @@ def fetch_news_with_fallback(
 
     if fallback_data is not None:
         logger.info("Returning fallback data")
-        return fallback_data
+        return fallback_data, True
     logger.warning("No fallback data, returning empty list")
-    return []
+    return [], False
