@@ -4,10 +4,7 @@ Loads all application settings from .env files with type validation
 and sensible defaults.
 """
 
-from pathlib import Path
-from typing import Optional
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

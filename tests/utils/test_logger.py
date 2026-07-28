@@ -1,7 +1,6 @@
 """Tests for the utils/logger module."""
 
 import logging
-from pathlib import Path
 
 from stock_market_expert.utils.logger import get_logger
 
@@ -24,7 +23,7 @@ class TestGetLogger:
         log_dir = tmp_path / "logs"
         assert not log_dir.exists()
 
-        logger = get_logger("test_creates_log_dir_unique", log_dir=log_dir)
+        get_logger("test_creates_log_dir_unique", log_dir=log_dir)
 
         assert log_dir.exists()
 
