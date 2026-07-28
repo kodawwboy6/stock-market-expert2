@@ -97,3 +97,48 @@ class TestFinnhubNewsProvider:
             call_args = mock_get.call_args
             assert call_args[1]["params"]["from"] == "2024-01-01"
             assert call_args[1]["params"]["to"] == "2024-01-31"
+
+
+class TestFetchCompanyNewsWithRetry:
+    """Tests for fetch_company_news_with_retry."""
+
+    def test_returns_news_on_first_try(self):
+        """Should return company news on the first successful try."""
+        mock_response = [
+            {
+                "headline": "Test Headline",
+                "url": "https://example.com/test",
+                "source": "Test Source",
+                "datetime": "2024-01-15T10:00:00Z",
+            }
+        ]
+
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+
+            result = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
+                api_key="test_key",
+                symbol="AAPL",
+                max_retries=3,
+                fallback_days=1,
+            )
+
+            assert len(result) == 1
+            assert result[0].headline == "Test Headline"
+            mock_get.assert_called_once()
+
+    def test_returns_empty_on_failure(self):
+        """Should return empty list when all retries fail."""
+        with patch("httpx.get") as mock_get:
+            mock_get.side_effect = Exception("API Error")
+
+            result = __import__("stock_market_expert.data.finnhub_news_provider", fromlist=["fetch_company_news_with_retry"]).fetch_company_news_with_retry(
+                api_key="test_key",
+                symbol="AAPL",
+                max_retries=2,
+                fallback_days=1,
+            )
+
+            assert result == []
+            # 1 initial + 2 retries on today + 6 fallback days * 3 retries each = 2 + 18 = 20
+            assert mock_get.call_count == 21

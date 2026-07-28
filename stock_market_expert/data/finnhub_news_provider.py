@@ -1,9 +1,11 @@
 """Finnhub news provider module.
 
 Fetches company news from Finnhub's /company-news API endpoint.
+Includes retry with exponential backoff and fallback to previous days.
 """
 
 import dataclasses
+from datetime import date, timedelta
 from typing import Optional
 
 import httpx
@@ -87,3 +89,101 @@ class FinnhubNewsProvider:
             )
 
         return news_items
+
+
+def fetch_company_news_with_retry(
+    api_key: str,
+    symbol: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    max_retries: int = 3,
+    fallback_days: int = 1,
+) -> list[CompanyNews]:
+    """Fetch company news with retry and fallback to previous days.
+
+    Tries up to max_retries times with exponential backoff.
+    If all retries fail, falls back to news from fallback_days
+    days ago. Repeats fallback up to 5 days back.
+
+    Args:
+        api_key: Finnhub API key.
+        symbol: Stock symbol (e.g., "AAPL").
+        date_from: Start date (YYYY-MM-DD).
+        date_to: End date (YYYY-MM-DD).
+        max_retries: Number of retries per date attempt.
+        fallback_days: How many days back to start falling back.
+
+    Returns:
+        List of CompanyNews objects.
+    """
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+    provider = FinnhubNewsProvider(api_key)
+
+    # Try today/today's range first
+    last_exception = None
+    for attempt in range(max_retries + 1):
+        try:
+            items = provider.fetch_company_news(
+                symbol=symbol,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            if items:
+                logger.info(f"Fetched {len(items)} company news items for {symbol}")
+                return items
+            logger.warning(f"No company news for {symbol}, trying fallback")
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = min(1.0 * (2 ** attempt), 60.0)
+                logger.warning(
+                    f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+            else:
+                logger.warning(f"All {max_retries} retries failed for {symbol}: {e}")
+
+    # Fall back to previous days
+    for days_back in range(1, fallback_days + 6):
+        fallback_from = (date.today() - timedelta(days=days_back)).isoformat()
+        fallback_to = (date.today() - timedelta(days=max(days_back - 1, 0))).isoformat()
+        logger.info(f"Falling back to company news for {symbol} ({fallback_from} to {fallback_to})")
+
+        for attempt in range(max_retries + 1):
+            try:
+                items = provider.fetch_company_news(
+                    symbol=symbol,
+                    date_from=fallback_from,
+                    date_to=fallback_to,
+                )
+                if items:
+                    logger.info(
+                        f"Fetched {len(items)} company news items for {symbol} (fallback)"
+                    )
+                    return items
+                logger.warning(
+                    f"No company news for {symbol} on fallback date, trying next"
+                )
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt), 60.0)
+                    logger.warning(
+                        f"Fallback attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.warning(
+                        f"All retries failed for {symbol} on fallback: {e}"
+                    )
+
+    logger.error(
+        f"Failed to fetch company news for {symbol} after {max_retries} retries "
+        f"and {fallback_days + 5} fallback days. Last error: {last_exception}"
+    )
+    return []

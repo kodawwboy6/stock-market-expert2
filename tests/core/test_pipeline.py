@@ -1,0 +1,214 @@
+"""Tests for the news pipeline module."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from stock_market_expert.core.pipeline import (
+    NewsPipeline,
+    NewsPipelineResult,
+    run_news_pipeline,
+)
+from stock_market_expert.data.alpha_vantage_news_provider import NewsItem
+
+
+class TestNewsPipeline:
+    """Tests for the NewsPipeline class."""
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    def test_init_uses_config_defaults(self, mock_config):
+        """Should use config defaults when no args provided."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+
+        pipeline = NewsPipeline(news_category="technology")
+
+        assert pipeline.alpha_vantage_key == "av_key"
+        assert pipeline.finnhub_key == "fh_key"
+        assert pipeline.lm_studio_base_url == "http://localhost:1234/v1"
+        assert pipeline.lm_studio_model == "lms-7b"
+        assert pipeline.news_category == "technology"
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    @patch("stock_market_expert.core.pipeline.fetch_news_with_retry")
+    @patch("stock_market_expert.core.pipeline.fetch_company_news_with_retry")
+    @patch("stock_market_expert.core.pipeline.Agent")
+    def test_run_returns_result(self, mock_agent_class, mock_finnhub, mock_fetch, mock_config):
+        """Running the pipeline should return a NewsPipelineResult."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+
+        mock_fetch.return_value = [
+            NewsItem(
+                headline="AI Company Launches New Product",
+                body="A leading AI company announced a breakthrough product.",
+                categories=["technology", "ai"],
+                source="Tech News",
+                time_published="2024-01-15T10:00:00Z",
+                sentiment="positive",
+            )
+        ]
+        mock_finnhub.return_value = [
+            MagicMock(headline="AAPL News", summary="Summary", source="Source",
+                      symbols=["AAPL"], related=[], time_published="2024-01-15T11:00:00Z")
+        ]
+
+        mock_agent = MagicMock()
+        mock_agent.analyze_news_with_catalysts.return_value = (
+            [MagicMock(sector="AI", stocks=["AAPL"], direction="buy", confidence=0.85, reasoning="test")],
+            [MagicMock(type="product_launch", description="New product", impact="positive", stocks=["AAPL"])],
+            [MagicMock(symbol="AAPL", direction="buy", confidence=0.85, reasoning="test", catalyst="New product")],
+        )
+        mock_agent_class.return_value = mock_agent
+
+        pipeline = NewsPipeline(
+            api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+            news_category="technology",
+        )
+        result = pipeline.run()
+
+        assert isinstance(result, NewsPipelineResult)
+        assert len(result.active_sectors) == 1
+        assert len(result.catalysts) == 1
+        assert len(result.operations) == 1
+        assert result.news_count == 1
+        assert result.company_news_count == 1
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    @patch("stock_market_expert.core.pipeline.fetch_news_with_retry")
+    def test_run_handles_empty_news(self, mock_fetch, mock_config):
+        """Should return empty result when no news is fetched."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+        mock_fetch.return_value = []
+
+        pipeline = NewsPipeline(
+            api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+            news_category="technology",
+        )
+        result = pipeline.run()
+
+        assert result.active_sectors == []
+        assert result.catalysts == []
+        assert result.operations == []
+        assert result.news_count == 0
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    def test_init_with_no_api_keys(self, mock_config):
+        """Should handle missing API keys gracefully."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="",
+            finnhub_api_key="",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+
+        pipeline = NewsPipeline()
+
+        assert pipeline.alpha_vantage_key == ""
+        assert pipeline.finnhub_key == ""
+
+    def test_extract_symbols(self):
+        """Should extract ticker symbols from news items."""
+        pipeline = NewsPipeline(api_key="test", finnhub_api_key="test")
+
+        news_items = [
+            NewsItem(
+                headline="AAPL Reports Strong Earnings",
+                body="Apple Inc. (AAPL) reported strong quarterly earnings, beating expectations.",
+                categories=["technology", "earnings"],
+                source="Tech News",
+                time_published="2024-01-15T10:00:00Z",
+            ),
+            NewsItem(
+                headline="NVDA Announces New AI Chip",
+                body="NVIDIA (NVDA) announced a new AI chip for data centers.",
+                categories=["technology", "ai"],
+                source="Industry News",
+                time_published="2024-01-15T11:00:00Z",
+            ),
+        ]
+
+        symbols = pipeline._extract_symbols(news_items)
+
+        assert "AAPL" in symbols
+        assert "NVDA" in symbols
+
+    def test_extract_symbols_filters_non_tickers(self):
+        """Should filter out common non-ticker words."""
+        pipeline = NewsPipeline(api_key="test", finnhub_api_key="test")
+
+        news_items = [
+            NewsItem(
+                headline="THE NEW YEAR EACH HAS GOOD NEWS",
+                body="ALL OVER THE WORLD SAME YEAR",
+                categories=["technology"],
+                source="Test Source",
+                time_published="2024-01-15T10:00:00Z",
+            ),
+        ]
+
+        symbols = pipeline._extract_symbols(news_items)
+
+        # Common words should be filtered out
+        assert "THE" not in symbols
+        assert "NEW" not in symbols
+        assert "EACH" not in symbols
+        assert "HAS" not in symbols
+        assert "GOOD" not in symbols
+        assert "ALL" not in symbols
+
+    def test_extract_symbols_limits_to_20(self):
+        """Should limit extracted symbols to 20."""
+        pipeline = NewsPipeline(api_key="test", finnhub_api_key="test")
+
+        # Create news with many potential symbols
+        symbols_in_text = [f"SYMBOL{i:02d}" for i in range(30)]
+        headline = " ".join(symbols_in_text)
+
+        news_items = [
+            NewsItem(
+                headline=headline,
+                body="",
+                categories=["technology"],
+                source="Test Source",
+                time_published="2024-01-15T10:00:00Z",
+            ),
+        ]
+
+        extracted = pipeline._extract_symbols(news_items)
+        assert len(extracted) <= 20
+
+
+class TestRunNewsPipeline:
+    """Tests for the run_news_pipeline convenience function."""
+
+    @patch("stock_market_expert.core.pipeline.NewsPipeline")
+    def test_uses_news_pipeline(self, mock_pipeline_class):
+        """Should create and use a NewsPipeline instance."""
+        mock_result = MagicMock()
+        mock_pipeline_class.return_value.run.return_value = mock_result
+
+        result = run_news_pipeline(category="technology")
+
+        mock_pipeline_class.assert_called_once()
+        mock_pipeline_class.return_value.run.assert_called_once()
+        assert result is mock_result
