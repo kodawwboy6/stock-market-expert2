@@ -1,9 +1,11 @@
 """Alpha Vantage news provider module.
 
 Fetches technology news from Alpha Vantage's /news API endpoint.
+Includes retry with exponential backoff and fallback to previous days.
 """
 
 import dataclasses
+from datetime import date, timedelta
 from typing import Optional
 
 import httpx
@@ -88,3 +90,143 @@ class AlphaVantageNewsProvider:
             )
 
         return news_items
+
+
+class NewsProviderError(Exception):
+    """Raised when a news provider encounters an error."""
+
+
+def fetch_news_with_retry(
+    api_key: str,
+    category: str,
+    max_retries: int = 3,
+    fallback_days: int = 1,
+) -> list[NewsItem]:
+    """Fetch news with retry and fallback to previous days.
+
+    Tries up to max_retries times with exponential backoff.
+    If all retries fail, falls back to news from fallback_days
+    days ago. Repeats fallback up to 5 days back.
+
+    Args:
+        api_key: Alpha Vantage API key.
+        category: News category (e.g., "technology").
+        max_retries: Number of retries per date attempt.
+        fallback_days: How many days back to start falling back.
+
+    Returns:
+        List of NewsItem objects.
+    """
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+    provider = AlphaVantageNewsProvider(api_key)
+
+    # Try today first
+    last_exception = None
+    for attempt in range(max_retries + 1):
+        try:
+            items = provider.fetch_news(category=category)
+            if items:
+                logger.info(f"Fetched {len(items)} news items (today)")
+                return items
+            logger.warning(f"No news items returned for today, trying fallback")
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = min(1.0 * (2 ** attempt), 60.0)
+                logger.warning(
+                    f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+            else:
+                logger.warning(f"All {max_retries} retries failed for today: {e}")
+
+    # Fall back to previous days
+    for days_back in range(1, fallback_days + 6):
+        fallback_date = date.today() - timedelta(days=days_back)
+        date_str = fallback_date.isoformat()
+        logger.info(f"Falling back to news from {date_str}")
+
+        for attempt in range(max_retries + 1):
+            try:
+                items = provider.fetch_news(category=category, date=date_str)
+                if items:
+                    logger.info(
+                        f"Fetched {len(items)} news items (fallback: {date_str})"
+                    )
+                    return items
+                logger.warning(
+                    f"No news items for {date_str}, trying next fallback date"
+                )
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt), 60.0)
+                    logger.warning(
+                        f"Fallback attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.warning(
+                        f"All retries failed for {date_str}: {e}"
+                    )
+
+    logger.error(
+        f"Failed to fetch news after {max_retries} retries and "
+        f"{fallback_days + 5} fallback days. Last error: {last_exception}"
+    )
+    return []
+
+
+def fetch_news_with_fallback(
+    api_key: str,
+    category: str,
+    max_retries: int = 3,
+    fallback_data: Optional[list[NewsItem]] = None,
+) -> list[NewsItem]:
+    """Fetch news with retry and optional static fallback data.
+
+    Tries up to max_retries times with exponential backoff.
+    If all retries fail, returns fallback_data if provided,
+    otherwise returns empty list.
+
+    Args:
+        api_key: Alpha Vantage API key.
+        category: News category (e.g., "technology").
+        max_retries: Number of retries.
+        fallback_data: Static data to return if API fails.
+
+    Returns:
+        List of NewsItem objects.
+    """
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+    provider = AlphaVantageNewsProvider(api_key)
+
+    for attempt in range(max_retries + 1):
+        try:
+            items = provider.fetch_news(category=category)
+            if items:
+                return items
+        except Exception as e:
+            if attempt < max_retries:
+                delay = min(1.0 * (2 ** attempt), 60.0)
+                logger.warning(
+                    f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+            else:
+                logger.warning(f"All {max_retries} retries failed: {e}")
+
+    if fallback_data is not None:
+        logger.info("Returning fallback data")
+        return fallback_data
+    logger.warning("No fallback data, returning empty list")
+    return []
