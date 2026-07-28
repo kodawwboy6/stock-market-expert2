@@ -1,7 +1,6 @@
 """Tests for the db/schema module."""
 
 import sqlite3
-from pathlib import Path
 
 from stock_market_expert.db.schema import init_db, get_connection
 

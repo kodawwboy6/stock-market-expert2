@@ -1,10 +1,6 @@
 """Tests for the config loader module."""
 
-import os
-from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
 
 from stock_market_expert.config.loader import AppConfig, load_config
 

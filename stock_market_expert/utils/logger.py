@@ -9,7 +9,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 
 def get_logger(
@@ -66,7 +66,6 @@ def _get_json_file_handler(
     Returns:
         Configured logging.Handler instance.
     """
-    from stock_market_expert.errors.handler import DEFAULT_HANDLER
 
     class JsonFileHandler(logging.Handler):
         """Handler that writes log records as structured JSON."""
