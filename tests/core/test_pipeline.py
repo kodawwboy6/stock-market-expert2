@@ -46,20 +46,26 @@ class TestNewsPipeline:
             lm_studio_model="lms-7b",
         )
 
-        mock_fetch.return_value = [
-            NewsItem(
-                headline="AI Company Launches New Product",
-                body="A leading AI company announced a breakthrough product.",
-                categories=["technology", "ai"],
-                source="Tech News",
-                time_published="2024-01-15T10:00:00Z",
-                sentiment="positive",
-            )
-        ]
-        mock_finnhub.return_value = [
-            MagicMock(headline="AAPL News", summary="Summary", source="Source",
-                      symbols=["AAPL"], related=[], time_published="2024-01-15T11:00:00Z")
-        ]
+        mock_fetch.return_value = (
+            [
+                NewsItem(
+                    headline="AI Company Launches New Product",
+                    body="A leading AI company announced a breakthrough product.",
+                    categories=["technology", "ai"],
+                    source="Tech News",
+                    time_published="2024-01-15T10:00:00Z",
+                    sentiment="positive",
+                )
+            ],
+            False,
+        )
+        mock_finnhub.return_value = (
+            [
+                MagicMock(headline="AAPL News", summary="Summary", source="Source",
+                          symbols=["AAPL"], related=[], time_published="2024-01-15T11:00:00Z")
+            ],
+            False,
+        )
 
         mock_agent = MagicMock()
         mock_agent.analyze_news_with_catalysts.return_value = (
@@ -95,7 +101,7 @@ class TestNewsPipeline:
             lm_studio_base_url="http://localhost:1234/v1",
             lm_studio_model="lms-7b",
         )
-        mock_fetch.return_value = []
+        mock_fetch.return_value = ([], False)
 
         pipeline = NewsPipeline(
             api_key="av_key",
@@ -110,6 +116,7 @@ class TestNewsPipeline:
         assert result.catalysts == []
         assert result.operations == []
         assert result.news_count == 0
+        assert not result.fallback_used
 
     @patch("stock_market_expert.core.pipeline.load_config")
     def test_init_with_no_api_keys(self, mock_config):
@@ -197,6 +204,98 @@ class TestNewsPipeline:
         extracted = pipeline._extract_symbols(news_items)
         assert len(extracted) <= 20
 
+    @patch("stock_market_expert.core.pipeline.load_config")
+    @patch("stock_market_expert.core.pipeline.fetch_news_with_retry")
+    def test_run_tracks_fallback_used_on_retry_fallback(self, mock_fetch, mock_config):
+        """Should set fallback_used=True when retry falls back to previous days."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+        mock_fetch.return_value = ([], True)  # simulate fallback was used
+
+        pipeline = NewsPipeline(
+            api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+            news_category="technology",
+        )
+        result = pipeline.run()
+
+        assert result.fallback_used is True
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    @patch("stock_market_expert.core.pipeline.fetch_news_with_fallback")
+    def test_run_tracks_fallback_used_on_static_fallback(self, mock_fetch, mock_config):
+        """Should set fallback_used=True when static fallback_data is used."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+        mock_fetch.return_value = ([], True)
+
+        pipeline = NewsPipeline(
+            api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+            news_category="technology",
+        )
+        fallback_data = [
+            NewsItem(
+                headline="Fallback News",
+                body="Fallback body",
+                categories=["technology"],
+                source="Fallback",
+                time_published="2024-01-15T10:00:00Z",
+            )
+        ]
+        result = pipeline.run(fallback_data=fallback_data)
+
+        assert result.fallback_used is True
+
+    @patch("stock_market_expert.core.pipeline.load_config")
+    @patch("stock_market_expert.core.pipeline.fetch_news_with_retry")
+    @patch("stock_market_expert.core.pipeline.Agent")
+    def test_run_no_fallback_when_api_succeeds(self, mock_agent_class, mock_fetch, mock_config):
+        """Should set fallback_used=False when API succeeds."""
+        mock_config.return_value = MagicMock(
+            alpha_vantage_api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+        )
+        mock_fetch.return_value = (
+            [
+                NewsItem(
+                    headline="Real News",
+                    body="Real body",
+                    categories=["technology"],
+                    source="Real",
+                    time_published="2024-01-15T10:00:00Z",
+                )
+            ],
+            False,
+        )
+        mock_agent = MagicMock()
+        mock_agent.analyze_news_with_catalysts.return_value = ([], [], [])
+        mock_agent_class.return_value = mock_agent
+
+        pipeline = NewsPipeline(
+            api_key="av_key",
+            finnhub_api_key="fh_key",
+            lm_studio_base_url="http://localhost:1234/v1",
+            lm_studio_model="lms-7b",
+            news_category="technology",
+        )
+        result = pipeline.run()
+
+        assert result.fallback_used is False
 
 class TestRunNewsPipeline:
     """Tests for the run_news_pipeline convenience function."""

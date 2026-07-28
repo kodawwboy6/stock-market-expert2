@@ -46,7 +46,7 @@ class FinnhubNewsProvider:
         symbol: str,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
-    ) -> list[CompanyNews]:
+    ) -> tuple[list[CompanyNews], bool]:
         """Fetch company news for a given symbol.
 
         Args:
@@ -98,7 +98,7 @@ def fetch_company_news_with_retry(
     date_to: Optional[str] = None,
     max_retries: int = 3,
     fallback_days: int = 1,
-) -> list[CompanyNews]:
+) -> tuple[list[CompanyNews], bool]:
     """Fetch company news with retry and fallback to previous days.
 
     Tries up to max_retries times with exponential backoff.
@@ -114,7 +114,7 @@ def fetch_company_news_with_retry(
         fallback_days: How many days back to start falling back.
 
     Returns:
-        List of CompanyNews objects.
+        Tuple of (list of CompanyNews objects, bool indicating if fallback was used).
     """
     import logging
     import time
@@ -133,7 +133,7 @@ def fetch_company_news_with_retry(
             )
             if items:
                 logger.info(f"Fetched {len(items)} company news items for {symbol}")
-                return items
+                return items, False
             logger.warning(f"No company news for {symbol}, trying fallback")
         except Exception as e:
             last_exception = e
@@ -164,7 +164,7 @@ def fetch_company_news_with_retry(
                     logger.info(
                         f"Fetched {len(items)} company news items for {symbol} (fallback)"
                     )
-                    return items
+                    return items, True
                 logger.warning(
                     f"No company news for {symbol} on fallback date, trying next"
                 )
@@ -186,4 +186,4 @@ def fetch_company_news_with_retry(
         f"Failed to fetch company news for {symbol} after {max_retries} retries "
         f"and {fallback_days + 5} fallback days. Last error: {last_exception}"
     )
-    return []
+    return [], False

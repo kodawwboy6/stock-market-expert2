@@ -22,6 +22,7 @@ from stock_market_expert.core.agent import (
 from stock_market_expert.data.alpha_vantage_news_provider import (
     AlphaVantageNewsProvider,
     NewsItem,
+    fetch_news_with_fallback,
     fetch_news_with_retry,
 )
 from stock_market_expert.data.finnhub_news_provider import (
@@ -73,12 +74,15 @@ class NewsPipeline:
             max_news_items: Maximum news items to fetch.
             confidence_threshold: Minimum confidence for operations.
         """
-        config = load_config()
+        # Only load config when at least one key is missing (Issue #9)
+        _config = None
+        if api_key is None or finnhub_api_key is None or lm_studio_base_url is None or lm_studio_model is None:
+            _config = load_config()
 
-        self.alpha_vantage_key = api_key or config.alpha_vantage_api_key
-        self.finnhub_key = finnhub_api_key or config.finnhub_api_key
-        self.lm_studio_base_url = lm_studio_base_url or config.lm_studio_base_url
-        self.lm_studio_model = lm_studio_model or config.lm_studio_model
+        self.alpha_vantage_key = api_key or (_config.alpha_vantage_api_key if _config else "")
+        self.finnhub_key = finnhub_api_key or (_config.finnhub_api_key if _config else "")
+        self.lm_studio_base_url = lm_studio_base_url or (_config.lm_studio_base_url if _config else "")
+        self.lm_studio_model = lm_studio_model or (_config.lm_studio_model if _config else "")
         self.news_category = news_category
         self.max_news_items = max_news_items
         self.confidence_threshold = confidence_threshold
@@ -110,7 +114,7 @@ class NewsPipeline:
 
         # Step 1: Fetch news from Alpha Vantage
         logger.info("Step 1: Fetching news from Alpha Vantage...")
-        news_items = self._fetch_news(fallback_data)
+        news_items, news_fallback_used = self._fetch_news(fallback_data)
         logger.info(f"Fetched {len(news_items)} news items")
 
         if not news_items:
@@ -121,7 +125,7 @@ class NewsPipeline:
                 operations=[],
                 news_count=0,
                 company_news_count=0,
-                fallback_used=False,
+                fallback_used=news_fallback_used or bool(fallback_data),
                 date_used=date.today().isoformat(),
             )
 
@@ -131,10 +135,13 @@ class NewsPipeline:
         logger.info(f"Extracted {len(symbols)} unique symbols: {symbols}")
 
         company_news_items = []
+        company_fallback_used = False
         if symbols and self.finnhub_key:
             for symbol in symbols:
-                company_news = self._fetch_company_news(symbol)
+                company_news, company_fallback = self._fetch_company_news(symbol)
                 company_news_items.extend(company_news)
+                if company_fallback:
+                    company_fallback_used = True
                 logger.info(f"Fetched {len(company_news)} company news items for {symbol}")
 
         logger.info(f"Total company news items: {len(company_news_items)}")
@@ -153,28 +160,44 @@ class NewsPipeline:
         logger.info(f"Pipeline complete: {len(active_sectors)} sectors, "
                      f"{len(catalysts)} catalysts, {len(operations)} operations")
 
+        fallback_used = news_fallback_used or company_fallback_used or bool(fallback_data)
         return NewsPipelineResult(
             active_sectors=active_sectors,
             catalysts=catalysts,
             operations=operations,
             news_count=len(news_items),
             company_news_count=len(company_news_items),
-            fallback_used=False,
+            fallback_used=fallback_used,
             date_used=date.today().isoformat(),
         )
 
-    def _fetch_news(self, fallback_data: Optional[list[NewsItem]] = None) -> list[NewsItem]:
-        """Fetch news with retry and fallback."""
+    def _fetch_news(self, fallback_data: Optional[list[NewsItem]] = None) -> tuple[list[NewsItem], bool]:
+        """Fetch news with retry and fallback.
+
+        Returns:
+            Tuple of (news items, bool indicating if fallback was used).
+        """
         if not self.alpha_vantage_key:
             logger.warning("Alpha Vantage API key not configured")
-            return []
+            return [], False
 
-        return fetch_news_with_retry(
+        if fallback_data is not None:
+            # Use static fallback data when provided
+            items, fallback_used = fetch_news_with_fallback(
+                api_key=self.alpha_vantage_key,
+                category=self.news_category,
+                max_retries=3,
+                fallback_data=fallback_data,
+            )
+            return items, fallback_used or True
+
+        items, fallback_used = fetch_news_with_retry(
             api_key=self.alpha_vantage_key,
             category=self.news_category,
             max_retries=3,
             fallback_days=1,
         )
+        return items, fallback_used
 
     def _extract_symbols(self, news_items: list[NewsItem]) -> list[str]:
         """Extract unique stock symbols from news items.
@@ -216,14 +239,18 @@ class NewsPipeline:
         # Limit to reasonable number of symbols
         return sorted(list(symbols))[:20]
 
-    def _fetch_company_news(self, symbol: str) -> list[CompanyNews]:
-        """Fetch company news with retry and fallback."""
+    def _fetch_company_news(self, symbol: str) -> tuple[list[CompanyNews], bool]:
+        """Fetch company news with retry and fallback.
+
+        Returns:
+            Tuple of (company news items, bool indicating if fallback was used).
+        """
         if not self.finnhub_key:
             logger.warning(f"Finnhub API key not configured, skipping {symbol}")
-            return []
+            return [], False
 
         today = date.today().isoformat()
-        return fetch_company_news_with_retry(
+        items, fallback_used = fetch_company_news_with_retry(
             api_key=self.finnhub_key,
             symbol=symbol,
             date_from=today,
@@ -231,6 +258,7 @@ class NewsPipeline:
             max_retries=3,
             fallback_days=1,
         )
+        return items, fallback_used
 
     def _analyze_news(
         self,
