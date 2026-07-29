@@ -174,3 +174,13 @@ A: apply_order should be implemented in ExecutionOrder, with PortfolioTracker as
 Q: Idempotency — how should we prevent redundant application
 A: Option A: Add applied: bool = False to ExecutionOrder
 
+plan is settled and it applied the fix. i start a new session and do code review again
+
+agent found that api call has no retry upon failure
+
+prompt:
+```
+/grill-me all operation involve external api should have a retry logic, with a time limit that expire before next loop of run. write a helper function and apply it to them
+```
+
+agent created async_retry_with_backoff
