@@ -158,7 +158,7 @@ class OrderBuilder:
         )
 
         # Use available cash as proxy for equity when positions info is limited
-        max_alloc = self.max_position_pct * self._available_cash
+        max_alloc = self.max_position_pct * equity
         raw_qty = (confidence * max_alloc) / price
 
         # For sells, use existing position quantity
