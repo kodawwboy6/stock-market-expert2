@@ -61,8 +61,8 @@ def test_init_defaults(engine):
 def test_init_custom_components():
     """ExecutionEngine should accept custom components."""
     ibkr = IBKRClient(paper_account=True)
-    builder = OrderBuilder()
     tracker = PortfolioTracker()
+    builder = OrderBuilder(tracker)
     engine = ExecutionEngine(
         ibkr_client=ibkr,
         order_builder=builder,

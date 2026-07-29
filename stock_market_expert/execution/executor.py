@@ -10,13 +10,11 @@ Orchestrates the full execution flow:
 7. Place market orders with day time-in-force
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from stock_market_expert.config.loader import load_config
 from stock_market_expert.execution.ibkr_client import IBKRClient
 from stock_market_expert.execution.order_builder import ExecutionOrder, OrderBuilder
 from stock_market_expert.execution.portfolio_tracker import PortfolioTracker
@@ -85,9 +83,9 @@ class ExecutionEngine:
             portfolio_tracker: Portfolio tracker instance.
             paper_account: Whether to use paper trading mode.
         """
-        self.ibkr = ibkr_client or IBKRClient(paper_account=paper_account)
-        self.order_builder = order_builder or OrderBuilder()
         self.portfolio_tracker = portfolio_tracker or PortfolioTracker()
+        self.order_builder = order_builder or OrderBuilder(self.portfolio_tracker)
+        self.ibkr = ibkr_client or IBKRClient(paper_account=paper_account)
         self.paper_account = paper_account
 
     async def run(
@@ -133,12 +131,9 @@ class ExecutionEngine:
 
         logger.info(f"Equity: {equity:.2f}, Cash: {self.portfolio_tracker.cash:.2f}")
 
-        # Set portfolio state on order builder
-        self.order_builder.set_portfolio(self.portfolio_tracker.cash, positions)
-
         # Step 3: Build orders with sells-first ordering
         prices = current_prices or {}
-        orders = self.order_builder.build_orders(signals, prices, equity)
+        orders = self.order_builder.build_orders(signals, prices)
 
         if not orders:
             logger.info("No orders to execute.")
@@ -233,7 +228,9 @@ class ExecutionEngine:
         order: ExecutionOrder,
         fill: dict[str, Any],
     ) -> None:
-        """Update portfolio tracker after an order fill.
+        """Apply an order fill to the portfolio tracker.
+
+        Uses the order's idempotent apply() method.
 
         Args:
             order: The execution order.
@@ -243,17 +240,7 @@ class ExecutionEngine:
         if fill_price <= 0:
             return
 
-        if order.side == "sell":
-            self.portfolio_tracker.update_after_sell(
-                order.symbol, order.quantity, fill_price
-            )
-        else:
-            self.portfolio_tracker.update_after_buy(
-                order.symbol, order.quantity, fill_price
-            )
-
-        # Update order builder state
-        self.order_builder.apply_order(order, fill_price)
+        order.apply(self.portfolio_tracker, fill_price)
 
     async def execute_sells_first(
         self,
@@ -291,7 +278,8 @@ class ExecutionEngine:
                 continue
 
             quantity = self.order_builder.calculate_quantity(
-                signal.symbol, "sell", signal.confidence, price
+                signal.symbol, "sell", signal.confidence, price,
+                current_prices,
             )
 
             order = ExecutionOrder(
@@ -318,10 +306,7 @@ class ExecutionEngine:
             if fill and fill.get("status") != "failed":
                 fill["fill_price"] = price
                 result.fills[signal.symbol] = fill
-                self.portfolio_tracker.update_after_sell(
-                    signal.symbol, quantity, price
-                )
-                self.order_builder.apply_order(order, price)
+                order.apply(self.portfolio_tracker, price)
             else:
                 result.errors.append(
                     f"Sell failed for {signal.symbol}: {fill.get('message', 'unknown')}"
@@ -338,7 +323,8 @@ class ExecutionEngine:
                 continue
 
             quantity = self.order_builder.calculate_quantity(
-                signal.symbol, "buy", signal.confidence, price
+                signal.symbol, "buy", signal.confidence, price,
+                current_prices,
             )
 
             if quantity < 1:
@@ -368,10 +354,7 @@ class ExecutionEngine:
             if fill and fill.get("status") != "failed":
                 fill["fill_price"] = price
                 result.fills[signal.symbol] = fill
-                self.portfolio_tracker.update_after_buy(
-                    signal.symbol, quantity, price
-                )
-                self.order_builder.apply_order(order, price)
+                order.apply(self.portfolio_tracker, price)
             else:
                 result.errors.append(
                     f"Buy failed for {signal.symbol}: {fill.get('message', 'unknown')}"
