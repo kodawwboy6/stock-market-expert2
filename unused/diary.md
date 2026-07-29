@@ -106,4 +106,11 @@ All 36 tests pass. Let me now run the full test suite once more, then do a code 
 Ticket #3 is already implemented
 ```
 
+The then found out i'm working on wrongly created branch and so I discarded them all
+
 ### Loop 2
+
+promp:
+```
+/Implement github ticket #4
+```
