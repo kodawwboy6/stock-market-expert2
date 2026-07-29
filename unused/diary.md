@@ -18,6 +18,7 @@ Prompt:
 /setup-matt-pocock-skills
 /ask-matt ...what should i do next?
 /to-spec create a spec for this project...
+/to-tickets ...
 ```
 
 I then setup git repo in github as suggested by matt. It then generate script to setup tickets on github.
@@ -123,4 +124,9 @@ The Signal Engine (ticket #4) is already fully implemented on this branch...
 I don't why it is already implemented. lets move on :/
 
 ### Loop 3
+
+prompt
+```
+/implement github ticket #5
+```
 
