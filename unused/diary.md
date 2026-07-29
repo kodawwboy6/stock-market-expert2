@@ -114,3 +114,13 @@ promp:
 ```
 /Implement github ticket #4
 ```
+
+Agent:
+```
+The Signal Engine (ticket #4) is already fully implemented on this branch...
+```
+
+I don't why it is already implemented. lets move on :/
+
+### Loop 3
+
