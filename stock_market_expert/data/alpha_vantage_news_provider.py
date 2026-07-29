@@ -131,7 +131,7 @@ def fetch_news_with_retry(
             if items:
                 logger.info(f"Fetched {len(items)} news items (today)")
                 return items, False
-            logger.warning(f"No news items returned for today, trying fallback")
+            logger.warning("No news items returned for today, trying fallback")
         except Exception as e:
             last_exception = e
             if attempt < max_retries:

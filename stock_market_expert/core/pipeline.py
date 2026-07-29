@@ -20,13 +20,11 @@ from stock_market_expert.core.agent import (
     OperationRecommendation,
 )
 from stock_market_expert.data.alpha_vantage_news_provider import (
-    AlphaVantageNewsProvider,
     NewsItem,
     fetch_news_with_fallback,
     fetch_news_with_retry,
 )
 from stock_market_expert.data.finnhub_news_provider import (
-    FinnhubNewsProvider,
     CompanyNews,
     fetch_company_news_with_retry,
 )
