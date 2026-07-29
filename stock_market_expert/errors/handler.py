@@ -4,6 +4,7 @@ Provides centralized error logging, retry logic with exponential backoff,
 and structured logging for observability.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -141,6 +142,16 @@ def log_step_complete(step: str) -> None:
     DEFAULT_HANDLER.log_step_complete(step)
 
 
+class DeadlineExceededError(Exception):
+    """Raised when a deadline expires during retry."""
+
+    def __init__(self, deadline: float) -> None:
+        self.deadline = deadline
+        super().__init__(
+            f"Deadline exceeded: {datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat()}"
+        )
+
+
 def retry_with_backoff(
     func: Callable,
     max_retries: int = 3,
@@ -148,6 +159,7 @@ def retry_with_backoff(
     max_delay: float = 60.0,
     fallback_date: Optional[str] = None,
     fallback_data: Optional[Any] = None,
+    deadline: Optional[float] = None,
 ) -> Any:
     """Retry a function with exponential backoff.
 
@@ -162,11 +174,15 @@ def retry_with_backoff(
         max_delay: Maximum delay between retries.
         fallback_date: Date to use for fallback data (e.g., "2024-01-15").
         fallback_data: Data to return if all retries fail.
+        deadline: Epoch time — if current time >= deadline, stop retrying
+            and raise DeadlineExceededError. Ensures retries leave enough
+            time for the next execution cycle.
 
     Returns:
         The result of the function, or fallback_data if all retries fail.
 
     Raises:
+        DeadlineExceededError: If deadline expires during retry.
         The last exception if all retries fail and no fallback_data is provided.
     """
     last_exception = None
@@ -177,6 +193,13 @@ def retry_with_backoff(
         except Exception as e:
             last_exception = e
             if attempt < max_retries:
+                # Check deadline before waiting for next retry
+                if deadline is not None and time.time() >= deadline:
+                    logger.warning(
+                        f"Deadline expired before retry {attempt + 2}/{max_retries + 1}. "
+                        f"Last error: {e}"
+                    )
+                    raise DeadlineExceededError(deadline) from e
                 delay = min(delay_factor * (2 ** attempt), max_delay)
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
@@ -197,4 +220,60 @@ def retry_with_backoff(
     # Should not reach here, but just in case
     if fallback_data is not None:
         return fallback_data
+    raise last_exception
+
+
+async def async_retry_with_backoff(
+    func: Callable,
+    max_retries: int = 3,
+    delay_factor: float = 1.0,
+    max_delay: float = 60.0,
+    deadline: Optional[float] = None,
+) -> Any:
+    """Retry an async function with exponential backoff.
+
+    Like retry_with_backoff but for async callables. Supports deadline
+    to ensure retries leave enough time for the next execution cycle.
+
+    Args:
+        func: The async function to retry.
+        max_retries: Maximum number of retries.
+        delay_factor: Base delay factor for exponential backoff.
+        max_delay: Maximum delay between retries.
+        deadline: Epoch time — if current time >= deadline, stop retrying
+            and raise DeadlineExceededError.
+
+    Returns:
+        The result of the function.
+
+    Raises:
+        DeadlineExceededError: If deadline expires during retry.
+        The last exception if all retries fail.
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await func()
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                # Check deadline before waiting for next retry
+                if deadline is not None and time.time() >= deadline:
+                    logger.warning(
+                        f"Deadline expired before retry {attempt + 2}/{max_retries + 1}. "
+                        f"Last error: {e}"
+                    )
+                    raise DeadlineExceededError(deadline) from e
+                delay = min(delay_factor * (2 ** attempt), max_delay)
+                logger.warning(
+                    f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"All {max_retries} retries failed. Raising exception.")
+                raise
+
+    # Should not reach here, but just in case
     raise last_exception

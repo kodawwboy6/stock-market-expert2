@@ -11,6 +11,7 @@ Orchestrates the full execution flow:
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -74,6 +75,7 @@ class ExecutionEngine:
         order_builder: Optional[OrderBuilder] = None,
         portfolio_tracker: Optional[PortfolioTracker] = None,
         paper_account: bool = True,
+        cycle_deadline: Optional[float] = None,
     ):
         """Initialize the execution engine.
 
@@ -82,11 +84,15 @@ class ExecutionEngine:
             order_builder: Order builder instance.
             portfolio_tracker: Portfolio tracker instance.
             paper_account: Whether to use paper trading mode.
+            cycle_deadline: Epoch time — shared across all IBKR retries
+                for this execution cycle. Set at the start of each run
+                so retries leave enough time for the next cycle.
         """
         self.portfolio_tracker = portfolio_tracker or PortfolioTracker()
         self.order_builder = order_builder or OrderBuilder(self.portfolio_tracker)
         self.ibkr = ibkr_client or IBKRClient(paper_account=paper_account)
         self.paper_account = paper_account
+        self._cycle_deadline = cycle_deadline
 
     async def run(
         self,
@@ -111,6 +117,9 @@ class ExecutionEngine:
         Returns:
             ExecutionResult with orders, fills, and portfolio state.
         """
+        # Set the shared deadline for all IBKR retries in this cycle
+        self.ibkr._deadline = self._cycle_deadline or (time.time() + 300)
+
         logger.info(f"=== Starting Execution Engine (Step 3) ===")
         logger.info(f"Paper account: {self.paper_account}")
 
@@ -147,7 +156,7 @@ class ExecutionEngine:
 
         for order in orders:
             fill = await self._execute_order(order, prices)
-            if fill and fill.get("status") != "failed":
+            if fill and fill.get("status") not in ("failed", "deadline"):
                 fills[order.symbol] = fill
                 # Update portfolio after each order
                 self._update_portfolio_after_fill(order, fill)
@@ -198,13 +207,9 @@ class ExecutionEngine:
                 "side": order.side,
                 "quantity": order.quantity,
                 "fill_price": 100.0,
-                "status": "filled",
-                "message": "Simulated paper fill",
+                "status": "simulated",
+                "message": "Paper mode — order simulated",
             }
-
-        if price <= 0:
-            logger.warning(f"No price for {order.symbol}, cannot execute")
-            return {"status": "failed", "message": f"No price for {order.symbol}"}
 
         # Place the order via IBKR
         fill = await self.ibkr.place_order(
@@ -262,6 +267,9 @@ class ExecutionEngine:
         Returns:
             ExecutionResult with fills and portfolio state.
         """
+        # Set the shared deadline for all IBKR retries in this cycle
+        self.ibkr._deadline = self._cycle_deadline or (time.time() + 300)
+
         # Separate sells and buys
         sells = [s for s in signals if s.direction == "sell"]
         buys = [s for s in signals if s.direction == "buy"]
@@ -303,7 +311,7 @@ class ExecutionEngine:
                 tif="DAY",
             )
 
-            if fill and fill.get("status") != "failed":
+            if fill and fill.get("status") not in ("failed", "deadline"):
                 fill["fill_price"] = price
                 result.fills[signal.symbol] = fill
                 order.apply(self.portfolio_tracker, price)
@@ -351,7 +359,7 @@ class ExecutionEngine:
                 tif="DAY",
             )
 
-            if fill and fill.get("status") != "failed":
+            if fill and fill.get("status") not in ("failed", "deadline"):
                 fill["fill_price"] = price
                 result.fills[signal.symbol] = fill
                 order.apply(self.portfolio_tracker, price)

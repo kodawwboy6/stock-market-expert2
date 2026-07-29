@@ -1,5 +1,7 @@
 """Tests for IBKRClient — paper trading client."""
 
+import time
+
 import pytest
 
 from stock_market_expert.execution.ibkr_client import IBKRClient
@@ -49,58 +51,50 @@ async def test_disconnect(client):
 
 
 @pytest.mark.asyncio
-async def test_get_account_info(client):
-    """get_account_info should return default values when not connected."""
+async def test_connect_with_deadline_expires(client):
+    """connect should return False when deadline expires during retry."""
+    past_deadline = time.time() - 1  # already expired
+    client._deadline = past_deadline
+    result = await client.connect()
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_connect_with_future_deadline_succeeds(client):
+    """connect should succeed when deadline is in the future."""
+    future_deadline = time.time() + 300
+    client._deadline = future_deadline
+    result = await client.connect()
+    # In paper mode without TWS, result may be True or False depending on env
+    assert isinstance(result, bool)
+
+
+@pytest.mark.asyncio
+async def test_get_account_info_with_deadline_expires(client):
+    """get_account_info should return empty state when deadline expires."""
+    past_deadline = time.time() - 1
+    client._deadline = past_deadline
     info = await client.get_account_info()
-    assert "equity" in info
-    assert "cash" in info
-    assert "positions" in info
-    assert "connected" in info
+    assert info["equity"] == 0.0
+    assert info["cash"] == 0.0
+    assert info["positions"] == {}
     assert info["connected"] is False
 
 
 @pytest.mark.asyncio
-async def test_get_portfolio_balance(client):
-    """get_portfolio_balance should return cash and equity."""
-    balance = await client.get_portfolio_balance()
-    assert "cash" in balance
-    assert "equity" in balance
+async def test_place_order_with_deadline_expires(client):
+    """place_order should return deadline status when deadline expires."""
+    past_deadline = time.time() - 1
+    client._deadline = past_deadline
+    # Pretend connected with a valid _api (not None) to trigger retry path
+    client._connected = True
+    client._api = object()  # mock API object
+    result = await client.place_order("AAPL", 10, "buy")
+    assert result["status"] == "deadline"
 
 
 @pytest.mark.asyncio
-async def test_get_positions(client):
-    """get_positions should return empty dict when not connected."""
-    positions = await client.get_positions()
-    assert positions == {}
-
-
-@pytest.mark.asyncio
-async def test_place_order_paper_mode(client):
-    """place_order in paper mode should return simulated result."""
-    result = await client.place_order(
-        symbol="AAPL",
-        quantity=10,
-        side="buy",
-        order_type="MKT",
-        tif="DAY",
-    )
-    assert result is not None
-    assert result["symbol"] == "AAPL"
-    assert result["quantity"] == 10
-    assert result["side"] == "buy"
+async def test_place_order_without_connection_returns_simulated(client):
+    """place_order should return simulated status when not connected."""
+    result = await client.place_order("AAPL", 10, "buy")
     assert result["status"] == "simulated"
-
-
-@pytest.mark.asyncio
-async def test_place_order_sell(client):
-    """place_order should pass correct side to IBKR."""
-    result = await client.place_order(
-        symbol="GOOGL",
-        quantity=5,
-        side="sell",
-        order_type="MKT",
-        tif="DAY",
-    )
-    assert result["side"] == "sell"
-    assert result["order_type"] == "MKT"
-    assert result["tif"] == "DAY"

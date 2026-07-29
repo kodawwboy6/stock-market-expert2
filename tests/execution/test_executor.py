@@ -1,5 +1,7 @@
 """Tests for ExecutionEngine — orchestrator."""
 
+import time
+
 import pytest
 
 from stock_market_expert.execution.executor import ExecutionEngine, ExecutionResult
@@ -149,3 +151,78 @@ async def test_portfolio_state_updated(engine, signals):
     assert "cash" in result.portfolio_state
     assert "equity" in result.portfolio_state
     assert "positions" in result.portfolio_state
+
+
+# --- Retry deadline tests ---
+
+
+@pytest.mark.asyncio
+async def test_cycle_deadline_set_on_ibkr():
+    """ExecutionEngine should set _deadline on IBKRClient at cycle start."""
+    tracker = PortfolioTracker()
+    ibkr = IBKRClient(paper_account=True)
+    engine = ExecutionEngine(
+        ibkr_client=ibkr,
+        portfolio_tracker=tracker,
+        paper_account=True,
+    )
+
+    # Before run, deadline should be whatever was passed to __init__
+    assert engine.ibkr._deadline is None
+
+    # Set a cycle deadline
+    future_deadline = time.time() + 600
+    engine._cycle_deadline = future_deadline
+
+    # Run with empty signals — should still set the deadline
+    await engine.run([], {}, initial_cash=100000.0)
+
+    assert engine.ibkr._deadline == future_deadline
+
+
+@pytest.mark.asyncio
+async def test_cycle_deadline_default():
+    """ExecutionEngine should set a default deadline if none provided."""
+    tracker = PortfolioTracker()
+    ibkr = IBKRClient(paper_account=True)
+    engine = ExecutionEngine(
+        ibkr_client=ibkr,
+        portfolio_tracker=tracker,
+        paper_account=True,
+    )
+    engine._cycle_deadline = None
+
+    await engine.run([], {}, initial_cash=100000.0)
+
+    # Should have set a default (time.time() + 300)
+    assert engine.ibkr._deadline is not None
+    assert engine.ibkr._deadline > time.time()
+
+
+@pytest.mark.asyncio
+async def test_execute_sells_first_sets_deadline():
+    """execute_sells_first should also set deadline on IBKRClient."""
+    tracker = PortfolioTracker()
+    ibkr = IBKRClient(paper_account=True)
+    engine = ExecutionEngine(
+        ibkr_client=ibkr,
+        portfolio_tracker=tracker,
+        paper_account=True,
+    )
+    set_deadline = time.time() + 600
+    engine._cycle_deadline = set_deadline
+
+    signals = [
+        TechnicalSignal(
+            symbol="AAPL",
+            direction="sell",
+            confidence=0.85,
+            score=0.45,
+            reasoning="MACD bearish",
+        ),
+    ]
+
+    await engine.execute_sells_first(signals, {"AAPL": 150.0}, 100000.0)
+
+    # Use approximate comparison since time.time() advances between calls
+    assert abs(engine.ibkr._deadline - set_deadline) < 0.01
