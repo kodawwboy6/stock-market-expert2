@@ -217,10 +217,7 @@ class PortfolioTracker:
         """
         prices = current_prices or {}
         unrealized = self.get_unrealized_pnl(prices)
-        equity = self._cash + sum(
-            self._positions.get(s, 0.0) * prices.get(s, 0.0)
-            for s in self._positions
-        )
+        equity = self.get_equity(prices)
 
         return {
             "cash": self._cash,

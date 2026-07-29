@@ -125,8 +125,52 @@ I don't why it is already implemented. lets move on :/
 
 ### Loop 3
 
-prompt
+prompt:
 ```
 /implement github ticket #5
 ```
+
+agent:
+```
+...
+All 144 tests pass (40 new execution tests + 104 existing). Typechecking passes. Committed to feature/04-execution-layer.
+...
+```
+
+prompt:
+```
+/code-review changes of this branch vs main
+```
+
+agent reply with some minor issue and a weird logic found:
+```python
+equity = self._cash + sum(
+    self._positions.get(s, 0.0) * 0.0 for s in self._positions
+)
+```
+```
+The get_equity call in calculate_quantity passes 0.0 for all prices, making the position contribution zero. This means position sizing for buys ignores current holdings. It's a logic bug, not a smell per se.
+```
+
+I've modified the code myself for usage of equity and prompt:
+```
+find all equity calculation (in portfolio_tracker and order_builder) and correct them to use get_equity in portfolio_tracker
+```
+
+Agent create another get_equity in OrderBuilder. I realize OrderBuilder and PortfolioTracker has its own positions. so I prompt:
+```
+/grill-with-docs I don't think it is a good fix. OrderBuilder and PortfolioTracker has its own positions, which is not a good design. I think PortfolioTracker should hold the only source of truth about positions, as it is part of portfolio, and OrderBuilder should get equity from PortfolioTracker. update docs and make a plan to fix this
+```
+
+Q: is it domain decision, or layering decision
+A: domain
+
+Q: OrderBuilder hold a reference to a PortfolioTracker, or build_orders() receives the portfolio state snapshot and passes it through
+A: hold reference
+
+Q: What about the set_portfolio() / set_cash() / apply_order() methods on OrderBuilder
+A: apply_order should be implemented in ExecutionOrder, with PortfolioTracker as input param. it can be applied without OrderBuilder. By the way i guess it is a good idea to mark if the order is applied and prevent redundant operation
+
+Q: Idempotency — how should we prevent redundant application
+A: Option A: Add applied: bool = False to ExecutionOrder
 

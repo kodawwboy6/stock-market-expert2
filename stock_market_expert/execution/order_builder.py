@@ -28,6 +28,7 @@ class ExecutionOrder:
         tif: Time-in-force — "DAY" for day orders.
         confidence: Confidence score from the originating signal.
         reasoning: Explanation for the order.
+        applied: Whether this order has already been applied to a tracker.
     """
 
     symbol: str
@@ -37,18 +38,42 @@ class ExecutionOrder:
     tif: str = "DAY"
     confidence: float = 0.0
     reasoning: str = ""
+    applied: bool = False
+
+    def apply(self, portfolio_tracker: "PortfolioTracker", fill_price: float) -> bool:
+        """Apply this order to the portfolio tracker.
+
+        Idempotent: returns False if already applied.
+
+        Args:
+            portfolio_tracker: The tracker to update.
+            fill_price: Actual fill price per share.
+
+        Returns:
+            True if the order was applied, False if already applied.
+        """
+        if self.applied:
+            return False
+
+        if self.side == "sell":
+            portfolio_tracker.update_after_sell(self.symbol, self.quantity, fill_price)
+        else:
+            portfolio_tracker.update_after_buy(self.symbol, self.quantity, fill_price)
+
+        self.applied = True
+        return True
 
 
 class OrderBuilder:
     """Builds execution orders from signals with sells-first ordering.
 
-    Enforces that all sell orders are placed before any buy orders,
-    with dynamic portfolio balance tracking after each sell to update
-    available cash for subsequent buy orders.
+    Reads portfolio state from the injected PortfolioTracker (sole source of truth).
+    Enforces that all sell orders are placed before any buy orders.
     """
 
     def __init__(
         self,
+        portfolio_tracker: PortfolioTracker,
         max_position_pct: float = 0.10,
         min_quantity: int = 1,
         order_type: str = "MKT",
@@ -57,56 +82,18 @@ class OrderBuilder:
         """Initialize the order builder.
 
         Args:
+            portfolio_tracker: The sole source of truth for portfolio state.
             max_position_pct: Maximum portfolio allocation per position (e.g., 0.10 = 10%).
             min_quantity: Minimum order quantity (must be at least 1).
             order_type: Default order type. Defaults to "MKT".
             tif: Default time-in-force. Defaults to "DAY".
         """
+        self.portfolio_tracker = portfolio_tracker
         self.max_position_pct = max_position_pct
         self.min_quantity = max(min_quantity, 1)
         self.order_type = order_type
         self.tif = tif
-        self._available_cash: float = 0.0
-        self._positions: dict[str, float] = {}
         self._processed_signals: set[tuple[str, str]] = set()
-
-    def set_portfolio(self, cash: float, positions: dict[str, float]) -> None:
-        """Set current portfolio state.
-
-        Args:
-            cash: Available cash balance.
-            positions: Dict mapping symbol to current quantity.
-        """
-        self._available_cash = cash
-        self._positions = dict(positions)
-
-    def add_position(self, symbol: str, delta: float) -> None:
-        """Update position for a symbol after an order.
-
-        Args:
-            symbol: Stock ticker symbol.
-            delta: Change in quantity (positive for buy, negative for sell).
-        """
-        current = self._positions.get(symbol, 0.0)
-        self._positions[symbol] = current + delta
-
-    def update_cash(self, delta: float) -> None:
-        """Update available cash after an order.
-
-        Args:
-            delta: Cash change (negative for buy, positive for sell).
-        """
-        self._available_cash += delta
-
-    @property
-    def available_cash(self) -> float:
-        """Get current available cash."""
-        return self._available_cash
-
-    @property
-    def positions(self) -> dict[str, float]:
-        """Get current positions."""
-        return dict(self._positions)
 
     def is_duplicate(self, symbol: str, direction: str) -> bool:
         """Check if a signal is a duplicate (same stock, same direction).
@@ -136,16 +123,20 @@ class OrderBuilder:
         direction: str,
         confidence: float,
         price: float,
+        current_prices: dict[str, float] | None = None,
     ) -> int:
         """Calculate order quantity proportional to confidence score.
 
         Position size = (confidence * max_position_pct * equity) / price
+
+        Reads equity and positions from the injected PortfolioTracker.
 
         Args:
             symbol: Stock ticker symbol.
             direction: Signal direction ("buy" or "sell").
             confidence: Confidence score (0.0–1.0).
             price: Current price per share.
+            current_prices: Optional prices for valuing positions.
 
         Returns:
             Number of shares to trade.
@@ -153,17 +144,13 @@ class OrderBuilder:
         if price <= 0:
             return self.min_quantity
 
-        equity = self._available_cash + sum(
-            self._positions.get(s, 0.0) * 0.0 for s in self._positions
-        )
-
-        # Use available cash as proxy for equity when positions info is limited
+        equity = self.portfolio_tracker.get_equity(current_prices)
         max_alloc = self.max_position_pct * equity
         raw_qty = (confidence * max_alloc) / price
 
         # For sells, use existing position quantity
         if direction == "sell":
-            current_pos = self._positions.get(symbol, 0.0)
+            current_pos = self.portfolio_tracker.positions.get(symbol, 0.0)
             return max(int(current_pos), self.min_quantity)
 
         # For buys, round down to avoid partial fills
@@ -173,23 +160,19 @@ class OrderBuilder:
         self,
         signals: list[TechnicalSignal],
         current_prices: dict[str, float],
-        equity: float,
     ) -> list[ExecutionOrder]:
         """Build execution orders from signals with sells-first ordering.
 
-        All sell orders are built first, then buy orders. Portfolio balance
-        is updated dynamically after each sell to reflect cash from proceeds.
+        All sell orders are built first, then buy orders. Reads portfolio
+        state from the injected PortfolioTracker.
 
         Args:
             signals: List of TechnicalSignal objects from the signal engine.
             current_prices: Dict mapping symbol to current market price.
-            equity: Current portfolio equity.
 
         Returns:
             List of ExecutionOrder objects, sells first then buys.
         """
-        # Set portfolio state
-        self.set_portfolio(equity, {})
         self._processed_signals.clear()
 
         sells = []
@@ -211,7 +194,8 @@ class OrderBuilder:
                 continue
 
             quantity = self.calculate_quantity(
-                signal.symbol, signal.direction, signal.confidence, price
+                signal.symbol, signal.direction, signal.confidence, price,
+                current_prices,
             )
 
             if quantity < self.min_quantity:
@@ -243,26 +227,3 @@ class OrderBuilder:
             f"Built {len(orders)} orders: {len(sells)} sells, {len(buys)} buys"
         )
         return orders
-
-    def apply_order(self, order: ExecutionOrder, fill_price: float) -> None:
-        """Apply an order's effect to internal state.
-
-        Updates positions and cash after an order fills.
-
-        Args:
-            order: The execution order.
-            fill_price: Actual fill price.
-        """
-        if order.side == "sell":
-            self.add_position(order.symbol, -order.quantity)
-            self.update_cash(order.quantity * fill_price)
-        else:
-            cost = order.quantity * fill_price
-            if cost <= self._available_cash:
-                self.add_position(order.symbol, order.quantity)
-                self.update_cash(-cost)
-            else:
-                logger.warning(
-                    f"Insufficient cash for buy order: {order.symbol} "
-                    f"needs {cost}, have {self._available_cash}"
-                )
