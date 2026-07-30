@@ -220,4 +220,10 @@ prompt:
 /to-tickets check the project for any hardcoded settings. create a ticket to config them in env file
 ```
 
+after ticket draft i've removed the the var about init capacity. then implement them.
+
+an md file in .scratch is created. not sure what is it.
+
+prompt: /code-review review since main
+
 TODO: try improve-codebase-architecture
