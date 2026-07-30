@@ -25,7 +25,11 @@ class RocResult:
     confidence: float
 
 
-def compute_roc(ohlcv_data: list[dict[str, Any]], period: int = 10) -> RocResult:
+def compute_roc(
+    ohlcv_data: list[dict[str, Any]],
+    period: int = 10,
+    confidence_scale: float = 20.0,
+) -> RocResult:
     """Compute Rate of Change from OHLCV data.
 
     ROC = ((Close - Close_n_days_ago) / Close_n_days_ago) * 100
@@ -33,6 +37,7 @@ def compute_roc(ohlcv_data: list[dict[str, Any]], period: int = 10) -> RocResult
     Args:
         ohlcv_data: List of OHLCV dicts with at least a 'close' key.
         period: Number of periods to look back (default 10).
+        confidence_scale: ROC percentage at which confidence reaches 1.0.
 
     Returns:
         RocResult with value, period, direction, and confidence.
@@ -57,10 +62,10 @@ def compute_roc(ohlcv_data: list[dict[str, Any]], period: int = 10) -> RocResult
     # Determine direction and confidence
     if roc_value > 0:
         direction = "bullish"
-        confidence = min(abs(roc_value) / 20, 1.0)  # Normalize: 20% change = max confidence
+        confidence = min(abs(roc_value) / confidence_scale, 1.0)
     elif roc_value < 0:
         direction = "bearish"
-        confidence = min(abs(roc_value) / 20, 1.0)
+        confidence = min(abs(roc_value) / confidence_scale, 1.0)
     else:
         direction = "neutral"
         confidence = 0.0

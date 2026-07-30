@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from stock_market_expert.config.loader import load_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,9 +27,16 @@ class ErrorHandler:
         """Initialize the error handler.
 
         Args:
-            log_dir: Directory to store log files. Defaults to logs/ in the project root.
+            log_dir: Directory to store log files. Defaults to config log_dir.
         """
-        self.log_dir = log_dir or Path("logs")
+        if log_dir is not None:
+            self.log_dir = log_dir
+        else:
+            try:
+                cfg = load_config()
+                self.log_dir = Path(cfg.log_dir)
+            except Exception:
+                self.log_dir = Path("logs")
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
     def log_error(

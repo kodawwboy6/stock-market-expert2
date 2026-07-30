@@ -27,7 +27,12 @@ class VolumeResult:
     confidence: float
 
 
-def compute_volume_score(ohlcv_data: list[dict[str, Any]], lookback: int = 20) -> VolumeResult:
+def compute_volume_score(
+    ohlcv_data: list[dict[str, Any]],
+    lookback: int = 20,
+    confidence_high_scale: float = 3.0,
+    confidence_low_scale: float = 2.0,
+) -> VolumeResult:
     """Compute volume score relative to average.
 
     Compares current volume to the average over the lookback period.
@@ -36,6 +41,8 @@ def compute_volume_score(ohlcv_data: list[dict[str, Any]], lookback: int = 20) -
     Args:
         ohlcv_data: List of OHLCV dicts with 'close' and 'volume' keys.
         lookback: Number of periods for average volume calculation (default 20).
+        confidence_high_scale: Ratio threshold for high-confidence scaling.
+        confidence_low_scale: Ratio threshold for low-confidence scaling.
 
     Returns:
         VolumeResult with volume metrics, direction, and confidence.
@@ -76,11 +83,10 @@ def compute_volume_score(ohlcv_data: list[dict[str, Any]], lookback: int = 20) -
             direction = "bullish"
         else:
             direction = "bearish"
-        # Confidence scales with ratio magnitude
-        confidence = min((ratio - 1.0) / 3.0, 1.0)
+        confidence = min((ratio - 1.0) / confidence_high_scale, 1.0)
     elif ratio > 1.0:
         direction = "bullish" if price_up else "bearish"
-        confidence = min((ratio - 1.0) / 2.0, 0.5)
+        confidence = min((ratio - 1.0) / confidence_low_scale, 0.5)
     else:
         direction = "neutral"
         confidence = 0.0

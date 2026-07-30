@@ -50,7 +50,13 @@ def _compute_ema(values: list[float], period: int) -> list[float]:
     return ema
 
 
-def compute_macd(ohlcv_data: list[dict[str, Any]], fast: int = 12, slow: int = 26, signal_period: int = 9) -> MacdResult:
+def compute_macd(
+    ohlcv_data: list[dict[str, Any]],
+    fast: int = 12,
+    slow: int = 26,
+    signal_period: int = 9,
+    confidence_multiplier: float = 10.0,
+) -> MacdResult:
     """Compute MACD from OHLCV data.
 
     Args:
@@ -58,6 +64,7 @@ def compute_macd(ohlcv_data: list[dict[str, Any]], fast: int = 12, slow: int = 2
         fast: Fast EMA period (default 12).
         slow: Slow EMA period (default 26).
         signal_period: Signal line EMA period (default 9).
+        confidence_multiplier: Multiplier for normalizing histogram to confidence.
 
     Returns:
         MacdResult with macd_line, signal_line, histogram, direction, and confidence.
@@ -90,15 +97,14 @@ def compute_macd(ohlcv_data: list[dict[str, Any]], fast: int = 12, slow: int = 2
     # Determine direction and confidence
     if histogram > 0:
         direction = "bullish"
-        # Confidence scales with histogram magnitude relative to price
         price = closes[-1]
         normalized_histogram = abs(histogram) / price if price > 0 else 0
-        confidence = min(normalized_histogram * 10, 1.0)
+        confidence = min(normalized_histogram * confidence_multiplier, 1.0)
     elif histogram < 0:
         direction = "bearish"
         price = closes[-1]
         normalized_histogram = abs(histogram) / price if price > 0 else 0
-        confidence = min(normalized_histogram * 10, 1.0)
+        confidence = min(normalized_histogram * confidence_multiplier, 1.0)
     else:
         direction = "neutral"
         confidence = 0.0

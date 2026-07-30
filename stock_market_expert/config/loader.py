@@ -49,12 +49,47 @@ class AppConfig(BaseSettings):
     macd_signal: int = 9
     history_days: int = 90
 
+    # === Signal Engine ===
+    roc_period: int = 10
+    volume_lookback: int = 20
+    buy_threshold: float = 0.3
+    sell_threshold: float = -0.3
+
+    # === Aggregation Weights ===
+    weight_macd: float = 0.5
+    weight_volume: float = 0.3
+    weight_roc: float = 0.2
+
+    # === Confidence Scaling ===
+    macd_confidence_multiplier: float = 10.0
+    roc_confidence_scale: float = 20.0
+    volume_confidence_high_scale: float = 3.0
+    volume_confidence_low_scale: float = 2.0
+
     # === Risk Management ===
     min_signal_confidence: float = 0.7
 
     # === Execution ===
     order_type: str = "MKT"
     paper_account: bool = True
+
+    # === Execution Deadlines ===
+    signal_deadline: int = 300
+    execution_deadline: int = 300
+
+    # === Retry & Backoff ===
+    retry_max_retries: int = 5
+    retry_delay_factor: float = 1.0
+    retry_max_delay: float = 30.0
+    ibkr_retry_max_retries: int = 3
+    ibkr_retry_delay_factor: float = 1.0
+    ibkr_retry_max_delay: float = 30.0
+    ibkr_order_retry_max_retries: int = 1
+
+    # === Infrastructure ===
+    db_path: str = "data/stock_market_expert.db"
+    log_dir: str = "logs"
+    ibkr_api_timeout: int = 10
 
     # === Scheduling ===
     run_mode: str = "continuous"

@@ -61,6 +61,13 @@ class SignalEngine:
         buy_threshold: float = 0.3,
         sell_threshold: float = -0.3,
         min_confidence: float = 0.7,
+        macd_confidence_multiplier: float = 10.0,
+        roc_confidence_scale: float = 20.0,
+        volume_confidence_high_scale: float = 3.0,
+        volume_confidence_low_scale: float = 2.0,
+        weight_macd: float = 0.5,
+        weight_volume: float = 0.3,
+        weight_roc: float = 0.2,
     ):
         """Initialize the signal engine.
 
@@ -78,6 +85,13 @@ class SignalEngine:
             buy_threshold: Score threshold for buy signal.
             sell_threshold: Score threshold for sell signal.
             min_confidence: Minimum confidence to emit a signal.
+            macd_confidence_multiplier: Histogram-to-confidence multiplier.
+            roc_confidence_scale: ROC % at which confidence reaches 1.0.
+            volume_confidence_high_scale: High-confidence volume ratio scale.
+            volume_confidence_low_scale: Low-confidence volume ratio scale.
+            weight_macd: Aggregation weight for MACD component.
+            weight_volume: Aggregation weight for Volume component.
+            weight_roc: Aggregation weight for ROC component.
         """
         self.twelve_data = TwelveDataProvider(api_key=twelve_data_key)
         self.alpaca = AlpacaProvider(
@@ -94,6 +108,13 @@ class SignalEngine:
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
         self.min_confidence = min_confidence
+        self.macd_confidence_multiplier = macd_confidence_multiplier
+        self.roc_confidence_scale = roc_confidence_scale
+        self.volume_confidence_high_scale = volume_confidence_high_scale
+        self.volume_confidence_low_scale = volume_confidence_low_scale
+        self.weight_macd = weight_macd
+        self.weight_volume = weight_volume
+        self.weight_roc = weight_roc
         self._signal_history: dict[str, list[str]] = {}  # symbol -> list of directions
 
     def generate_signals(self, symbols: list[str]) -> list[TechnicalSignal]:
@@ -150,10 +171,20 @@ class SignalEngine:
             fast=self.macd_fast,
             slow=self.macd_slow,
             signal_period=self.macd_signal,
+            confidence_multiplier=self.macd_confidence_multiplier,
         )
 
-        roc_result = compute_roc(ohlcv, period=self.roc_period)
-        volume_result = compute_volume_score(ohlcv, lookback=self.volume_lookback)
+        roc_result = compute_roc(
+            ohlcv,
+            period=self.roc_period,
+            confidence_scale=self.roc_confidence_scale,
+        )
+        volume_result = compute_volume_score(
+            ohlcv,
+            lookback=self.volume_lookback,
+            confidence_high_scale=self.volume_confidence_high_scale,
+            confidence_low_scale=self.volume_confidence_low_scale,
+        )
 
         # Weighted aggregation
         aggregated = weighted_aggregate(
@@ -162,6 +193,11 @@ class SignalEngine:
             roc_result=roc_result,
             buy_threshold=self.buy_threshold,
             sell_threshold=self.sell_threshold,
+            weights={
+                "macd": self.weight_macd,
+                "volume": self.weight_volume,
+                "roc": self.weight_roc,
+            },
         )
 
         # Only emit signals that meet confidence threshold

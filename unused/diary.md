@@ -215,4 +215,9 @@ prompt:
 
 agent didn't ask me any question and create 3 tickets. they are then all implemented
 
+prompt:
+```
+/to-tickets check the project for any hardcoded settings. create a ticket to config them in env file
+```
+
 TODO: try improve-codebase-architecture

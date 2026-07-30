@@ -142,18 +142,18 @@ class IBKRClient:
             positions = self._api.positions()
             for pos in positions:
                 symbol = pos.contract.symbol
-                self._positions[symbol] = float(pos.position)
+                self._positions[symbol] = pos.position
         except Exception as e:
-            log_error(e, "Failed to refresh account info", "step3")
+            log_error(e, "IBKR refresh account info failed", "step3")
 
     async def get_account_info(self) -> dict[str, Any]:
-        """Get current account information.
+        """Get current account information including equity, cash, and positions.
 
         Retries with exponential backoff up to 3 times. Stops early if
         the execution cycle deadline expires.
 
         Returns:
-            Dict with keys: equity, cash, positions, connected.
+            Dict with equity, cash, positions, connected status.
         """
         async def _do_get_account_info():
             if self._connected and self._api is not None:

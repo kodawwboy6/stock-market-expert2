@@ -100,7 +100,7 @@ async def run_step2(
 
     Retries with backoff until success or deadline expires.
     """
-    deadline = time.time() + 300  # 5-minute deadline for signal generation
+    deadline = time.time() + cfg.signal_deadline
 
     async def _try_signals() -> list[TechnicalSignal]:
         engine = SignalEngine(
@@ -112,10 +112,10 @@ async def run_step2(
             macd_fast=cfg.macd_fast,
             macd_slow=cfg.macd_slow,
             macd_signal=cfg.macd_signal,
-            roc_period=10,
-            volume_lookback=20,
-            buy_threshold=0.3,
-            sell_threshold=-0.3,
+            roc_period=cfg.roc_period,
+            volume_lookback=cfg.volume_lookback,
+            buy_threshold=cfg.buy_threshold,
+            sell_threshold=cfg.sell_threshold,
             min_confidence=cfg.min_signal_confidence,
         )
         engine.reset_dedup()
@@ -124,9 +124,9 @@ async def run_step2(
     try:
         return await async_retry_with_backoff(
             _try_signals,
-            max_retries=5,
-            delay_factor=1.0,
-            max_delay=30.0,
+            max_retries=cfg.retry_max_retries,
+            delay_factor=cfg.retry_delay_factor,
+            max_delay=cfg.retry_max_delay,
             deadline=deadline,
         )
     except DeadlineExceededError:
@@ -148,7 +148,7 @@ async def run_step3(
     if not signals:
         return ExecutionResult()
 
-    deadline = time.time() + 600  # 10-minute deadline for execution
+    deadline = time.time() + cfg.execution_deadline
 
     async def _try_execute() -> ExecutionResult:
         engine = ExecutionEngine(
@@ -156,15 +156,14 @@ async def run_step3(
             order_type=cfg.order_type,
             cycle_deadline=deadline,
         )
-        initial_cash = 100000.0
-        return await engine.run(signals, initial_cash=initial_cash)
+        return await engine.run(signals)
 
     try:
         return await async_retry_with_backoff(
             _try_execute,
-            max_retries=5,
-            delay_factor=1.0,
-            max_delay=30.0,
+            max_retries=cfg.ibkr_order_retry_max_retries,
+            delay_factor=cfg.ibkr_retry_delay_factor,
+            max_delay=cfg.ibkr_retry_max_delay,
             deadline=deadline,
         )
     except DeadlineExceededError:
@@ -174,8 +173,6 @@ async def run_step3(
         _get_logger().error(f"Step 3 failed after retries: {exc}")
         return ExecutionResult()
 
-
-# ── Cycle loop ────────────────────────────────────────────────────────
 
 async def run_cycle() -> None:
     """Run one complete execution cycle (Step 1 -> Step 2 -> Step 3)."""
@@ -280,20 +277,9 @@ def main() -> None:
         logger.error(f"Database initialization failed: {exc}")
         sys.exit(1)
 
-    # Determine interval and mode
-    interval = 7200  # default 2 hours
-    try:
-        val = config.execution_interval
-        if val is not None:
-            interval = int(val)
-    except (ValueError, TypeError, AttributeError):
-        pass
-
-    run_mode = "continuous"
-    try:
-        run_mode = config.run_mode
-    except AttributeError:
-        pass
+    # Determine interval and mode from config
+    interval = config.execution_interval
+    run_mode = config.run_mode
 
     logger.info("Stock Market Expert starting")
     logger.info(f"Mode: {run_mode}, Interval: {interval}s")

@@ -136,56 +136,44 @@ class ExecutionEngine:
         if initial_cash is not None:
             self.portfolio_tracker.set_cash(initial_cash)
             equity = initial_cash
-            positions = {}
+            cash = initial_cash
+        elif connected:
+            info = await self.ibkr.get_account_info()
+            equity = info.get("equity", 0.0)
+            cash = info.get("cash", 0.0)
+            logger.info(f"Account: equity={equity:.2f}, cash={cash:.2f}")
         else:
-            account_info = await self.ibkr.get_account_info()
-            equity = account_info.get("equity", 0.0)
-            positions = account_info.get("positions", {})
-            self.portfolio_tracker.set_cash(account_info.get("cash", 0.0))
+            logger.warning("Not connected and no initial_cash — using 0.0")
+            equity = cash = 0.0
 
-        logger.info(f"Equity: {equity:.2f}, Cash: {self.portfolio_tracker.cash:.2f}")
+        self.portfolio_tracker.set_cash(cash)
 
         # Step 3: Build orders with sells-first ordering
-        prices = current_prices or {}
-        orders = self.order_builder.build_orders(signals, prices)
+        current_prices = current_prices or {}
+        orders = self.order_builder.build_orders(
+            signals, current_prices,
+        )
+        logger.info(f"Built {len(orders)} orders")
 
-        if not orders:
-            logger.info("No orders to execute.")
-            return ExecutionResult(
-                portfolio_state=self.portfolio_tracker.get_state(prices),
-            )
-
-        # Step 4: Execute orders — sells first, then buys
+        # Step 4: Execute orders
         fills = {}
         errors = []
 
         for order in orders:
-            fill = await self._execute_order(order, prices)
-            if fill and fill.get("status") not in ("failed", "deadline"):
+            fill = await self._execute_order(order, current_prices)
+            if fill:
                 fills[order.symbol] = fill
-                # Update portfolio after each order
                 self._update_portfolio_after_fill(order, fill)
             else:
-                error_msg = fill.get("message", "Unknown error") if fill else "No fill data"
-                errors.append(f"Failed to fill {order.side} {order.quantity} {order.symbol}: {error_msg}")
-                logger.error(f"Order failed: {order.side} {order.quantity} {order.symbol} — {error_msg}")
-
-        # Step 5: Get final portfolio state
-        portfolio_state = self.portfolio_tracker.get_state(prices)
-
-        # Disconnect
-        await self.ibkr.disconnect()
+                errors.append(f"Order failed for {order.symbol}")
 
         result = ExecutionResult(
             orders=orders,
             fills=fills,
-            portfolio_state=portfolio_state,
+            portfolio_state=self.portfolio_tracker.get_state(current_prices),
             errors=errors,
         )
-
-        logger.info(
-            f"=== Execution Complete: {len(fills)} filled, {len(errors)} errors ==="
-        )
+        logger.info(f"Execution complete: {len(fills)} fills, {len(errors)} errors")
         return result
 
     async def _execute_order(
@@ -196,8 +184,8 @@ class ExecutionEngine:
         """Execute a single order.
 
         Args:
-            order: The execution order to place.
-            current_prices: Current market prices for fallback.
+            order: The order to execute.
+            current_prices: Dict mapping symbol to current price.
 
         Returns:
             Fill result dict, or None on failure.
@@ -205,18 +193,21 @@ class ExecutionEngine:
         price = current_prices.get(order.symbol, 0.0)
 
         if self.paper_account and price <= 0:
-            # Paper mode with no price data — simulate at a default price
-            logger.info(f"Simulating {order.side} order for {order.symbol}")
-            return {
+            fill = {
                 "symbol": order.symbol,
-                "side": order.side,
                 "quantity": order.quantity,
-                "fill_price": 100.0,
+                "side": order.side,
+                "order_type": order.order_type,
+                "tif": order.tif,
                 "status": "simulated",
-                "message": "Paper mode — order simulated",
+                "fill_price": 0.0,
+                "message": "Paper mode — simulated fill",
             }
+            logger.info(
+                f"Simulated fill: {order.side} {order.quantity} {order.symbol}"
+            )
+            return fill
 
-        # Place the order via IBKR
         fill = await self.ibkr.place_order(
             symbol=order.symbol,
             quantity=order.quantity,
@@ -225,7 +216,7 @@ class ExecutionEngine:
             tif=order.tif,
         )
 
-        if fill and fill.get("status") not in ("failed",):
+        if fill and fill.get("status") not in ("failed", "deadline"):
             fill["fill_price"] = price
             logger.info(
                 f"Filled: {order.side} {order.quantity} {order.symbol} @ {price:.2f}"
