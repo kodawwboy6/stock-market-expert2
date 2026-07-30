@@ -196,3 +196,23 @@ i've opened a new session and run review again:
 
 Standards
 No explicit CODING_STANDARDS.md or CONTRIBUTING.md found. Review uses the smell baseline + existing codebase conventions (dataclasses, explicit types, docstring Args format,
+
+### manual verify
+
+I've checked the env file and found ORDER_TYPE was not being used. /diagnosing-bugs is used to fix this.
+
+after it is solved, i ask agent to check every env var. many of them are dead:
+
+12 out of 35 variables are dead — they exist in the config but are never actually wired through to any code path. They fall into 3 categories:
+IBKR REST API keys/URL (IBKR_TRADING_CLIENT_ID, IBKR_TRADING_CLIENT_SECRET, IBKR_BASE_URL) — The project uses IBKR's insync (TWS/Gateway) protocol, not their REST API. These are irrelevant.
+Technical analysis params (RSI_PERIOD, BOLLINGER_PERIOD, BOLLINGER_STD) — SignalEngine only supports MACD/ROC/Volume. No RSI or Bollinger implementation exists.
+Risk/scheduling flags (MAX_POSITION_PCT, MAX_DAILY_TRADES, MAX_PORTFOLIO_RISK_PCT, AUTO_EXECUTE, SCHEDULE_CRON, LOG_RETENTION_DAYS) — Either dead code or hardcoded defaults that bypass the config entirely.
+
+prompt:
+```
+/gill-me create 3 tickets w.r.t. these 3 categories
+```
+
+agent didn't ask me any question and create 3 tickets. they are then all implemented
+
+TODO: try improve-codebase-architecture
