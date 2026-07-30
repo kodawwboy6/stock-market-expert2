@@ -184,3 +184,15 @@ prompt:
 ```
 
 agent created async_retry_with_backoff
+
+### Loop 4
+
+prompt to implement #6
+
+agent have it done and marked ticket as closed. i'm sure how it can do that.
+it then run review but nth was found
+
+i've opened a new session and run review again:
+
+Standards
+No explicit CODING_STANDARDS.md or CONTRIBUTING.md found. Review uses the smell baseline + existing codebase conventions (dataclasses, explicit types, docstring Args format,
