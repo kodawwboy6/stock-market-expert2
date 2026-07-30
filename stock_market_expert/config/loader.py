@@ -69,7 +69,11 @@ class AppConfig(BaseSettings):
     # === Scheduling ===
     run_mode: str = "continuous"
     schedule_cron: str = "0 9 * * *"
+    execution_interval: int = 7200
     log_retention_days: int = 30
+
+    # === Logging ===
+    log_level: str = "INFO"
 
     def validate_required_fields(self) -> list[str]:
         """Return a list of missing required API keys.
