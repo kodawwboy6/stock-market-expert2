@@ -231,4 +231,8 @@ prompt:
 /grill-me write a skill with `/writing-great-skill` called "merge-this". ask user which tickets to close if it isn't specified. ask if rebase or merge is preferred. push current branch to remote, create a new remote branch if needed, make a pull request that close those tickets in description. rebase or merge to main branch. switch current repo to main branch. fetch and pull the change.
 ```
 
+```
+/writing-great-skills update /merge-this such that, when switching branch to main and there are some local changes, stash all changes to _temp, switch the branch, do fetch and pull, pop that stash
+```
+
 TODO: try improve-codebase-architecture
