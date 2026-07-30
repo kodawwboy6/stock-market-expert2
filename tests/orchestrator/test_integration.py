@@ -54,7 +54,6 @@ def mock_config():
     cfg.execution_interval = 7200
     cfg.run_mode = "continuous"
     cfg.log_level = "INFO"
-    cfg.log_retention_days = 30
     return cfg
 
 

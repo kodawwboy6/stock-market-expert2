@@ -21,10 +21,7 @@ class TestAppConfig:
         assert config.macd_fast == 12
         assert config.macd_slow == 26
         assert config.macd_signal == 9
-        assert config.rsi_period == 14
-        assert config.max_position_pct == 0.10
         assert config.min_signal_confidence == 0.7
-        assert config.max_daily_trades == 10
         assert config.order_type == "MKT"
         assert config.run_mode == "continuous"
         assert config.paper_account is True
@@ -37,7 +34,6 @@ class TestAppConfig:
             "NEWS_CATEGORY=biotech\n"
             "MACD_FAST=10\n"
             "MACD_SLOW=20\n"
-            "MAX_POSITION_PCT=0.20\n"
             "LM_STUDIO_BASE_URL=http://custom:8080/v1\n"
         )
 
@@ -46,7 +42,6 @@ class TestAppConfig:
         assert config.news_category == "biotech"
         assert config.macd_fast == 10
         assert config.macd_slow == 20
-        assert config.max_position_pct == 0.20
         assert config.lm_studio_base_url == "http://custom:8080/v1"
 
     def test_validate_required_fields_empty(self, tmp_path):

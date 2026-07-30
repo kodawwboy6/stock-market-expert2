@@ -30,10 +30,7 @@ class AppConfig(BaseSettings):
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
 
     # === IBKR ===
-    ibkr_trading_client_id: str = ""
-    ibkr_trading_client_secret: str = ""
     ibkr_account_id: str = ""
-    ibkr_base_url: str = "https://api-sandbox.interactivebrokers.com"
     ibkr_insync_host: str = "localhost"
     ibkr_insync_port: int = 7497
 
@@ -47,30 +44,21 @@ class AppConfig(BaseSettings):
     news_confidence_threshold: float = 0.6
 
     # === Technical Analysis ===
-    rsi_period: int = 14
     macd_fast: int = 12
     macd_slow: int = 26
     macd_signal: int = 9
-    bollinger_period: int = 20
-    bollinger_std: int = 2
     history_days: int = 90
 
     # === Risk Management ===
-    max_position_pct: float = 0.10
     min_signal_confidence: float = 0.7
-    max_daily_trades: int = 10
-    max_portfolio_risk_pct: float = 0.02
 
     # === Execution ===
     order_type: str = "MKT"
-    auto_execute: bool = True
     paper_account: bool = True
 
     # === Scheduling ===
     run_mode: str = "continuous"
-    schedule_cron: str = "0 9 * * *"
     execution_interval: int = 7200
-    log_retention_days: int = 30
 
     # === Logging ===
     log_level: str = "INFO"
