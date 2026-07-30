@@ -1,0 +1,24 @@
+[Unit]
+Description=Stock Market Expert — CLI analysis and paper trading
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/stock-market-expert2
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/%i/stock-market-expert2/.venv/bin/python /home/%i/stock-market-expert2/main.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/%i/stock-market-expert2/logs /home/%i/stock-market-expert2/data
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
