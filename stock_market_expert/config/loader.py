@@ -62,7 +62,7 @@ class AppConfig(BaseSettings):
     max_portfolio_risk_pct: float = 0.02
 
     # === Execution ===
-    order_type: str = "market"
+    order_type: str = "MKT"
     auto_execute: bool = True
     paper_account: bool = True
 

@@ -75,6 +75,7 @@ class ExecutionEngine:
         order_builder: Optional[OrderBuilder] = None,
         portfolio_tracker: Optional[PortfolioTracker] = None,
         paper_account: bool = True,
+        order_type: str = "MKT",
         cycle_deadline: Optional[float] = None,
     ):
         """Initialize the execution engine.
@@ -84,14 +85,18 @@ class ExecutionEngine:
             order_builder: Order builder instance.
             portfolio_tracker: Portfolio tracker instance.
             paper_account: Whether to use paper trading mode.
+            order_type: Default order type for all orders (e.g. "MKT", "LMT").
             cycle_deadline: Epoch time — shared across all IBKR retries
                 for this execution cycle. Set at the start of each run
                 so retries leave enough time for the next cycle.
         """
         self.portfolio_tracker = portfolio_tracker or PortfolioTracker()
-        self.order_builder = order_builder or OrderBuilder(self.portfolio_tracker)
+        self.order_builder = order_builder or OrderBuilder(
+            self.portfolio_tracker, order_type=order_type,
+        )
         self.ibkr = ibkr_client or IBKRClient(paper_account=paper_account)
         self.paper_account = paper_account
+        self.order_type = order_type
         self._cycle_deadline = cycle_deadline
 
     async def run(
@@ -294,7 +299,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 side="sell",
                 quantity=quantity,
-                order_type="MKT",
+                order_type=self.order_type,
                 tif="DAY",
                 confidence=signal.confidence,
                 reasoning=signal.reasoning,
@@ -307,7 +312,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 quantity=quantity,
                 side="sell",
-                order_type="MKT",
+                order_type=self.order_type,
                 tif="DAY",
             )
 
@@ -342,7 +347,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 side="buy",
                 quantity=quantity,
-                order_type="MKT",
+                order_type=self.order_type,
                 tif="DAY",
                 confidence=signal.confidence,
                 reasoning=signal.reasoning,
@@ -355,7 +360,7 @@ class ExecutionEngine:
                 symbol=signal.symbol,
                 quantity=quantity,
                 side="buy",
-                order_type="MKT",
+                order_type=self.order_type,
                 tif="DAY",
             )
 

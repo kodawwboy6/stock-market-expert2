@@ -25,7 +25,7 @@ class TestAppConfig:
         assert config.max_position_pct == 0.10
         assert config.min_signal_confidence == 0.7
         assert config.max_daily_trades == 10
-        assert config.order_type == "market"
+        assert config.order_type == "MKT"
         assert config.run_mode == "continuous"
         assert config.paper_account is True
         assert config.lm_studio_base_url == "http://localhost:1234/v1"

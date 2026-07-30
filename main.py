@@ -153,6 +153,7 @@ async def run_step3(
     async def _try_execute() -> ExecutionResult:
         engine = ExecutionEngine(
             paper_account=cfg.paper_account,
+            order_type=cfg.order_type,
             cycle_deadline=deadline,
         )
         initial_cash = 100000.0
