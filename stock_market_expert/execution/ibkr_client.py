@@ -43,17 +43,11 @@ class IBKRClient:
                 Set at the start of an execution cycle to ensure retries
                 leave enough time for the next cycle.
         """
-        _config = None
-        if (
-            host is None
-            or port is None
-            or account_id is None
-        ):
-            _config = load_config()
+        cfg = load_config()
 
-        self.host = host or getattr(_config, "ibkr_insync_host", "localhost")
-        self.port = port or getattr(_config, "ibkr_insync_port", 7497)
-        self.account_id = account_id or getattr(_config, "ibkr_account_id", "")
+        self.host = host or cfg.ibkr_insync_host
+        self.port = port or cfg.ibkr_insync_port
+        self.account_id = account_id or cfg.ibkr_account_id
         self.paper_account = paper_account
         self._deadline = deadline
         self._connected = False
