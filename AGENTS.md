@@ -6,6 +6,17 @@
 
 When merging pull requests, always prefer **rebase** over merge commits. Use `git rebase` to integrate changes from the target branch into the PR branch, then fast-forward merge to main. Avoid creating merge commits (`git merge --no-ff`) unless explicitly requested.
 
+## Accuracy Requirements
+
+For any information that must be exact — external API calls, response schemas, endpoint URLs, request parameters, rate limits, or protocol details — **`/research` and `/domain-modeling` are required**.
+
+- **Never infer** API response keys, parameter names, or endpoint paths from code alone.
+- **Always verify** against the official documentation or a live API call before writing code, tests, or documentation.
+- If the official docs are unclear, **query the live API** with a real key to get the actual response.
+- When documenting an API in an ADR, cite the official docs URL and note which response keys were verified live.
+
+This rule exists to prevent the kind of bugs where code assumes a response field that doesn't exist — e.g., reading `body` when the API returns `summary`, or reading `bid`/`ask` when `/price` only returns `price`.
+
 ## Coding Standards
 
 ### Issue tracker
