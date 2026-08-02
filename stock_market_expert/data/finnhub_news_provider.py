@@ -147,7 +147,9 @@ def fetch_company_news_with_retry(
             if items:
                 logger.info(f"Fetched {len(items)} company news items for {symbol}")
                 return items, False
-            logger.warning(f"No company news for {symbol}, trying fallback")
+            else:
+                # not to retry anyway
+                break
         except Exception as e:
             last_exception = e
             if attempt < max_retries:
@@ -159,6 +161,8 @@ def fetch_company_news_with_retry(
                 time.sleep(delay)
             else:
                 logger.warning(f"All {max_retries} retries failed for {symbol}: {e}")
+
+    logger.warning(f"No company news for {symbol}, trying fallback")
 
     # Fall back to previous days
     for days_back in range(1, fallback_days + 6):
@@ -178,6 +182,9 @@ def fetch_company_news_with_retry(
                         f"Fetched {len(items)} company news items for {symbol} (fallback)"
                     )
                     return items, True
+                else:
+                    # stop retrying anyway
+                    break
                 logger.warning(
                     f"No company news for {symbol} on fallback date, trying next"
                 )
