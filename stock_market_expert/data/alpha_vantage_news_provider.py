@@ -2,10 +2,12 @@
 
 Fetches technology news from Alpha Vantage's /news API endpoint.
 Includes retry with exponential backoff and fallback to previous days.
+
+Verified against official API response schema (see docs/adr/0005-external-api-documentation.md).
 """
 
 import dataclasses
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 import httpx
@@ -14,16 +16,41 @@ from stock_market_expert.config.loader import load_config
 
 
 @dataclasses.dataclass
+class Topic:
+    """A topic associated with a news article."""
+
+    topic: str
+    relevance_score: float
+
+
+@dataclasses.dataclass
+class TickerSentiment:
+    """Sentiment for a specific ticker within a news article."""
+
+    ticker: str
+    relevance_score: float
+    ticker_sentiment_score: float
+    ticker_sentiment_label: str
+
+
+@dataclasses.dataclass
 class NewsItem:
     """A single news item from Alpha Vantage."""
 
     headline: str
-    body: str
+    summary: str
     categories: list[str]
     source: str
     time_published: str
-    sentiment: Optional[str] = None
     url: Optional[str] = None
+    overall_sentiment_score: Optional[float] = None
+    overall_sentiment_label: Optional[str] = None
+    topics: list[Topic] = dataclasses.field(default_factory=list)
+    ticker_sentiment: list[TickerSentiment] = dataclasses.field(default_factory=list)
+    banner_image: Optional[str] = None
+    authors: list[str] = dataclasses.field(default_factory=list)
+    category_within_source: Optional[str] = None
+    source_domain: Optional[str] = None
 
 
 class AlphaVantageNewsProvider:
@@ -42,11 +69,20 @@ class AlphaVantageNewsProvider:
         """
         self.api_key = api_key
 
+    @staticmethod
+    def _parse_time_published(time_str: str) -> str:
+        """Normalize time_published from YYYYMMDDTHHMM to ISO format.
+
+        The API returns times like '20260802T073249'.
+        We keep the raw format as-is since it's already unambiguous.
+        """
+        return time_str
+
     def fetch_news(
         self,
         category: str,
         date: Optional[str] = None,
-    ) -> tuple[list[NewsItem], bool]:
+    ) -> list[NewsItem]:
         """Fetch news for a given category.
 
         Args:
@@ -75,19 +111,44 @@ class AlphaVantageNewsProvider:
         feed = data.get("feed", [])
         news_items = []
         for item in feed:
-            sentiment = item.get("sentiment", None)
-            if isinstance(sentiment, dict):
-                sentiment = sentiment.get("sentiment", None)
+            # Parse topics array: [{topic, relevance_score}, ...]
+            topics = []
+            for t in item.get("topics", []):
+                topics.append(
+                    Topic(
+                        topic=t.get("topic", ""),
+                        relevance_score=float(t.get("relevance_score", 0)),
+                    )
+                )
+
+            # Parse ticker_sentiment array: [{ticker, relevance_score, ticker_sentiment_score, ticker_sentiment_label}, ...]
+            ticker_sentiments = []
+            for ts in item.get("ticker_sentiment", []):
+                ticker_sentiments.append(
+                    TickerSentiment(
+                        ticker=ts.get("ticker", ""),
+                        relevance_score=float(ts.get("relevance_score", 0)),
+                        ticker_sentiment_score=float(ts.get("ticker_sentiment_score", 0)),
+                        ticker_sentiment_label=ts.get("ticker_sentiment_label", ""),
+                    )
+                )
 
             news_items.append(
                 NewsItem(
                     headline=item.get("title", ""),
-                    body=item.get("body", ""),
+                    summary=item.get("summary", ""),
                     categories=item.get("categories", []),
                     source=item.get("source", ""),
-                    time_published=item.get("time_published", ""),
-                    sentiment=sentiment,
+                    time_published=self._parse_time_published(item.get("time_published", "")),
                     url=item.get("url", None),
+                    overall_sentiment_score=item.get("overall_sentiment_score", None),
+                    overall_sentiment_label=item.get("overall_sentiment_label", None),
+                    topics=topics,
+                    ticker_sentiment=ticker_sentiments,
+                    banner_image=item.get("banner_image", None),
+                    authors=item.get("authors", []) or [],
+                    category_within_source=item.get("category_within_source", None),
+                    source_domain=item.get("source_domain", None),
                 )
             )
 
@@ -113,7 +174,7 @@ def fetch_news_with_retry(
     Args:
         api_key: Alpha Vantage API key.
         category: News category (e.g., "technology").
-        max_retries: Number of retries per date attempt. Defaults to RETRY_MAX env var.
+        max_retries: Number of retries per date attempt. Defaults to cfg.retry_max.
         fallback_days: How many days back to start falling back. Defaults to 1.
 
     Returns:
@@ -121,8 +182,6 @@ def fetch_news_with_retry(
     """
     import logging
     import time
-
-    from stock_market_expert.errors.handler import retry_with_backoff
 
     logger = logging.getLogger(__name__)
     cfg = load_config()
@@ -205,7 +264,7 @@ def fetch_news_with_fallback(
     Args:
         api_key: Alpha Vantage API key.
         category: News category (e.g., "technology").
-        max_retries: Number of retries. Defaults to RETRY_MAX env var.
+        max_retries: Number of retries. Defaults to cfg.retry_max.
         fallback_data: Static data to return if API fails.
 
     Returns:
