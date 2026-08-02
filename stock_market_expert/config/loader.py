@@ -46,6 +46,7 @@ class AppConfig(BaseSettings):
     news_category: str = "technology"
     news_max_items: int = 50
     news_confidence_threshold: float = 0.6
+    news_symbols_limit: int = 20
 
     # === Technical Analysis ===
     rsi_period: int = 14

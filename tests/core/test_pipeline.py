@@ -9,7 +9,7 @@ from stock_market_expert.core.pipeline import (
     NewsPipelineResult,
     run_news_pipeline,
 )
-from stock_market_expert.data.alpha_vantage_news_provider import NewsItem
+from stock_market_expert.data.alpha_vantage_news_provider import NewsItem, TickerSentiment
 
 
 class TestNewsPipeline:
@@ -56,6 +56,9 @@ class TestNewsPipeline:
                     time_published="2024-01-15T10:00:00Z",
                     overall_sentiment_score=0.5,
                     overall_sentiment_label="Somewhat-Bullish",
+                    ticker_sentiment=[
+                        TickerSentiment(ticker="AAPL", relevance_score=0.9, ticker_sentiment_score=0.5, ticker_sentiment_label="Bullish"),
+                    ],
                 )
             ],
             False,
@@ -145,6 +148,9 @@ class TestNewsPipeline:
                 categories=["technology", "earnings"],
                 source="Tech News",
                 time_published="2024-01-15T10:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker="AAPL", relevance_score=0.9, ticker_sentiment_score=0.5, ticker_sentiment_label="Somewhat-Bullish"),
+                ],
             ),
             NewsItem(
                 headline="NVDA Announces New AI Chip",
@@ -152,6 +158,9 @@ class TestNewsPipeline:
                 categories=["technology", "ai"],
                 source="Industry News",
                 time_published="2024-01-15T11:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker="NVDA", relevance_score=0.85, ticker_sentiment_score=0.7, ticker_sentiment_label="Bullish"),
+                ],
             ),
         ]
 
@@ -159,6 +168,49 @@ class TestNewsPipeline:
 
         assert "AAPL" in symbols
         assert "NVDA" in symbols
+
+    def test_extract_symbols_sorted_by_occurrence(self):
+        """Should sort symbols by occurrence count descending."""
+        pipeline = NewsPipeline(api_key="test", finnhub_api_key="test")
+
+        news_items = [
+            NewsItem(
+                headline="AAPL and NVDA both report earnings",
+                summary="AAPL earnings beat expectations. NVDA also strong.",
+                categories=["technology"],
+                source="Tech News",
+                time_published="2024-01-15T10:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker="AAPL", relevance_score=0.9, ticker_sentiment_score=0.5, ticker_sentiment_label="Bullish"),
+                    TickerSentiment(ticker="NVDA", relevance_score=0.8, ticker_sentiment_score=0.6, ticker_sentiment_label="Bullish"),
+                ],
+            ),
+            NewsItem(
+                headline="AAPL launches new product",
+                summary="AAPL announced a new product line.",
+                categories=["technology"],
+                source="Tech News",
+                time_published="2024-01-15T11:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker="AAPL", relevance_score=0.85, ticker_sentiment_score=0.7, ticker_sentiment_label="Bullish"),
+                ],
+            ),
+            NewsItem(
+                headline="NVDA AI chip update",
+                summary="NVDA continues to lead in AI chips.",
+                categories=["technology"],
+                source="Industry News",
+                time_published="2024-01-15T12:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker="NVDA", relevance_score=0.75, ticker_sentiment_score=0.4, ticker_sentiment_label="Somewhat-Bullish"),
+                ],
+            ),
+        ]
+
+        symbols = pipeline._extract_symbols(news_items)
+
+        # AAPL appears 3 times, NVDA appears 2 times
+        assert symbols.index("AAPL") < symbols.index("NVDA")
 
     def test_extract_symbols_filters_non_tickers(self):
         """Should filter out common non-ticker words."""
@@ -204,6 +256,38 @@ class TestNewsPipeline:
 
         extracted = pipeline._extract_symbols(news_items)
         assert len(extracted) <= 20
+
+    def test_extract_symbols_configurable_limit(self):
+        """Should respect configurable news_symbols_limit."""
+        pipeline = NewsPipeline(
+            api_key="test",
+            finnhub_api_key="test",
+            news_symbols_limit=5,
+        )
+
+        tickers = ["AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "TSLA", "META"]
+        news_items = [
+            NewsItem(
+                headline="Tech stocks report earnings",
+                summary="All tech stocks report earnings.",
+                categories=["technology"],
+                source="Test Source",
+                time_published="2024-01-15T10:00:00Z",
+                ticker_sentiment=[
+                    TickerSentiment(ticker=t, relevance_score=0.8, ticker_sentiment_score=0.5, ticker_sentiment_label="Bullish")
+                    for t in tickers
+                ],
+            ),
+        ]
+
+        extracted = pipeline._extract_symbols(news_items)
+        assert len(extracted) == 5
+
+    def test_extract_symbols_default_limit_preserves_behavior(self):
+        """Default limit of 20 should preserve existing behavior."""
+        pipeline = NewsPipeline(api_key="test", finnhub_api_key="test")
+
+        assert pipeline.news_symbols_limit == 20
 
     @patch("stock_market_expert.core.pipeline.load_config")
     @patch("stock_market_expert.core.pipeline.fetch_news_with_retry")
