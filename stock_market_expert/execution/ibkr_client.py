@@ -64,7 +64,7 @@ class IBKRClient:
     async def connect(self) -> bool:
         """Connect to IBKR TWS/Gateway.
 
-        Retries with exponential backoff up to 3 times. Stops early if
+        Retries with exponential backoff up to RETRY_MAX times. Stops early if
         the execution cycle deadline expires.
 
         Returns:
@@ -79,11 +79,11 @@ class IBKRClient:
             logger.info(f"Connected to IBKR at {self.host}:{self.port}")
             await self._refresh_account_info()
 
+        cfg = load_config()
         try:
             await async_retry_with_backoff(
                 _do_connect,
-                max_retries=3,
-                delay_factor=1.0,
+                delay_factor=cfg.retry_delay_factor,
                 max_delay=30.0,
                 deadline=self._deadline,
             )
@@ -114,7 +114,6 @@ class IBKRClient:
         try:
             await async_retry_with_backoff(
                 _do_disconnect,
-                max_retries=1,
                 deadline=self._deadline,
             )
         except DeadlineExceededError:
@@ -143,17 +142,15 @@ class IBKRClient:
             for pos in positions:
                 symbol = pos.contract.symbol
                 self._positions[symbol] = float(pos.position)
+
         except Exception as e:
             log_error(e, "Failed to refresh account info", "step3")
 
     async def get_account_info(self) -> dict[str, Any]:
-        """Get current account information.
-
-        Retries with exponential backoff up to 3 times. Stops early if
-        the execution cycle deadline expires.
+        """Get current account info including equity, cash, positions, connected.
 
         Returns:
-            Dict with keys: equity, cash, positions, connected.
+            Dict with equity, cash, positions, connected, and paper_account info.
         """
         async def _do_get_account_info():
             if self._connected and self._api is not None:
@@ -167,11 +164,11 @@ class IBKRClient:
                 "paper_account": self.paper_account,
             }
 
+        cfg = load_config()
         try:
             return await async_retry_with_backoff(
                 _do_get_account_info,
-                max_retries=3,
-                delay_factor=1.0,
+                delay_factor=cfg.retry_delay_factor,
                 max_delay=30.0,
                 deadline=self._deadline,
             )
@@ -220,7 +217,7 @@ class IBKRClient:
     ) -> Optional[dict[str, Any]]:
         """Place an order via IBKR.
 
-        Retries with exponential backoff up to 3 times. Stops early if
+        Retries with exponential backoff up to RETRY_MAX times. Stops early if
         the execution cycle deadline expires.
 
         Args:
@@ -276,11 +273,11 @@ class IBKRClient:
             logger.info(f"Order placed: {result}")
             return result
 
+        cfg = load_config()
         try:
             return await async_retry_with_backoff(
                 _do_place_order,
-                max_retries=3,
-                delay_factor=1.0,
+                delay_factor=cfg.retry_delay_factor,
                 max_delay=30.0,
                 deadline=self._deadline,
             )

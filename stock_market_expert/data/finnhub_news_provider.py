@@ -10,6 +10,8 @@ from typing import Optional
 
 import httpx
 
+from stock_market_expert.config.loader import load_config
+
 
 @dataclasses.dataclass
 class CompanyNews:
@@ -96,8 +98,8 @@ def fetch_company_news_with_retry(
     symbol: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    max_retries: int = 3,
-    fallback_days: int = 1,
+    max_retries: Optional[int] = None,
+    fallback_days: Optional[int] = None,
 ) -> tuple[list[CompanyNews], bool]:
     """Fetch company news with retry and fallback to previous days.
 
@@ -110,8 +112,8 @@ def fetch_company_news_with_retry(
         symbol: Stock symbol (e.g., "AAPL").
         date_from: Start date (YYYY-MM-DD).
         date_to: End date (YYYY-MM-DD).
-        max_retries: Number of retries per date attempt.
-        fallback_days: How many days back to start falling back.
+        max_retries: Number of retries per date attempt. Defaults to RETRY_MAX env var.
+        fallback_days: How many days back to start falling back. Defaults to 1.
 
     Returns:
         Tuple of (list of CompanyNews objects, bool indicating if fallback was used).
@@ -120,6 +122,10 @@ def fetch_company_news_with_retry(
     import time
 
     logger = logging.getLogger(__name__)
+    cfg = load_config()
+    max_retries = max_retries if max_retries is not None else cfg.retry_max
+    fallback_days = fallback_days if fallback_days is not None else 1
+
     provider = FinnhubNewsProvider(api_key)
 
     # Try today/today's range first
@@ -138,7 +144,7 @@ def fetch_company_news_with_retry(
         except Exception as e:
             last_exception = e
             if attempt < max_retries:
-                delay = min(1.0 * (2 ** attempt), 60.0)
+                delay = min(cfg.retry_delay_factor * (2 ** attempt), cfg.retry_max_delay)
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                     f"Retrying in {delay:.1f}s..."
@@ -171,7 +177,7 @@ def fetch_company_news_with_retry(
             except Exception as e:
                 last_exception = e
                 if attempt < max_retries:
-                    delay = min(1.0 * (2 ** attempt), 60.0)
+                    delay = min(cfg.retry_delay_factor * (2 ** attempt), cfg.retry_max_delay)
                     logger.warning(
                         f"Fallback attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                         f"Retrying in {delay:.1f}s..."

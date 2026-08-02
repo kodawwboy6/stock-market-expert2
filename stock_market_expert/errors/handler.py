@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from stock_market_expert.config.loader import load_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -154,9 +156,9 @@ class DeadlineExceededError(Exception):
 
 def retry_with_backoff(
     func: Callable,
-    max_retries: int = 3,
-    delay_factor: float = 1.0,
-    max_delay: float = 60.0,
+    max_retries: Optional[int] = None,
+    delay_factor: Optional[float] = None,
+    max_delay: Optional[float] = None,
     fallback_date: Optional[str] = None,
     fallback_data: Optional[Any] = None,
     deadline: Optional[float] = None,
@@ -169,9 +171,9 @@ def retry_with_backoff(
 
     Args:
         func: The function to retry.
-        max_retries: Maximum number of retries.
-        delay_factor: Base delay factor for exponential backoff.
-        max_delay: Maximum delay between retries.
+        max_retries: Maximum number of retries. Defaults to RETRY_MAX env var.
+        delay_factor: Base delay factor for exponential backoff. Defaults to RETRY_DELAY_FACTOR env var.
+        max_delay: Maximum delay between retries. Defaults to RETRY_MAX_DELAY env var.
         fallback_date: Date to use for fallback data (e.g., "2024-01-15").
         fallback_data: Data to return if all retries fail.
         deadline: Epoch time — if current time >= deadline, stop retrying
@@ -185,6 +187,11 @@ def retry_with_backoff(
         DeadlineExceededError: If deadline expires during retry.
         The last exception if all retries fail and no fallback_data is provided.
     """
+    cfg = load_config()
+    max_retries = max_retries if max_retries is not None else cfg.retry_max
+    delay_factor = delay_factor if delay_factor is not None else cfg.retry_delay_factor
+    max_delay = max_delay if max_delay is not None else cfg.retry_max_delay
+
     last_exception = None
 
     for attempt in range(max_retries + 1):
@@ -225,9 +232,9 @@ def retry_with_backoff(
 
 async def async_retry_with_backoff(
     func: Callable,
-    max_retries: int = 3,
-    delay_factor: float = 1.0,
-    max_delay: float = 60.0,
+    max_retries: Optional[int] = None,
+    delay_factor: Optional[float] = None,
+    max_delay: Optional[float] = None,
     deadline: Optional[float] = None,
 ) -> Any:
     """Retry an async function with exponential backoff.
@@ -237,9 +244,9 @@ async def async_retry_with_backoff(
 
     Args:
         func: The async function to retry.
-        max_retries: Maximum number of retries.
-        delay_factor: Base delay factor for exponential backoff.
-        max_delay: Maximum delay between retries.
+        max_retries: Maximum number of retries. Defaults to RETRY_MAX env var.
+        delay_factor: Base delay factor for exponential backoff. Defaults to RETRY_DELAY_FACTOR env var.
+        max_delay: Maximum delay between retries. Defaults to RETRY_MAX_DELAY env var.
         deadline: Epoch time — if current time >= deadline, stop retrying
             and raise DeadlineExceededError.
 
@@ -250,6 +257,11 @@ async def async_retry_with_backoff(
         DeadlineExceededError: If deadline expires during retry.
         The last exception if all retries fail.
     """
+    cfg = load_config()
+    max_retries = max_retries if max_retries is not None else cfg.retry_max
+    delay_factor = delay_factor if delay_factor is not None else cfg.retry_delay_factor
+    max_delay = max_delay if max_delay is not None else cfg.retry_max_delay
+
     last_exception = None
 
     for attempt in range(max_retries + 1):

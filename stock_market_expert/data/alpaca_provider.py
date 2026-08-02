@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 import httpx
 
+from stock_market_expert.config.loader import load_config
 from stock_market_expert.errors.handler import retry_with_backoff
 
 
@@ -65,7 +66,7 @@ class AlpacaProvider:
                 raise ValueError(f"No quote data for {symbol}")
             return data
 
-        result = retry_with_backoff(func=_fetch, max_retries=3)
+        result = retry_with_backoff(func=_fetch)
 
         return {
             "symbol": symbol,
@@ -99,8 +100,8 @@ class AlpacaProvider:
             response.raise_for_status()
             return response.json()
 
-        account = retry_with_backoff(func=_fetch_account, max_retries=3)
-        positions = retry_with_backoff(func=_fetch_positions, max_retries=3)
+        account = retry_with_backoff(func=_fetch_account)
+        positions = retry_with_backoff(func=_fetch_positions)
 
         return {
             "cash": float(account.get("cash", 0)),
@@ -151,7 +152,7 @@ class AlpacaProvider:
             response.raise_for_status()
             return response.json()
 
-        trades = retry_with_backoff(func=_fetch, max_retries=3)
+        trades = retry_with_backoff(func=_fetch)
 
         # Normalize to OHLCV format
         return [

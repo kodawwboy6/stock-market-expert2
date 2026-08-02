@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from stock_market_expert.analysis.signal_engine import TechnicalSignal
+from stock_market_expert.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -73,26 +74,27 @@ class OrderBuilder:
 
     def __init__(
         self,
-        portfolio_tracker: PortfolioTracker,
-        max_position_pct: float = 0.10,
-        min_quantity: int = 1,
-        order_type: str = "MKT",
-        tif: str = "DAY",
+        portfolio_tracker: "PortfolioTracker",
+        max_position_pct: Optional[float] = None,
+        min_quantity: Optional[int] = None,
+        order_type: Optional[str] = None,
+        tif: Optional[str] = None,
     ):
         """Initialize the order builder.
 
         Args:
             portfolio_tracker: The sole source of truth for portfolio state.
-            max_position_pct: Maximum portfolio allocation per position (e.g., 0.10 = 10%).
-            min_quantity: Minimum order quantity (must be at least 1).
-            order_type: Default order type. Defaults to "MKT".
+            max_position_pct: Maximum portfolio allocation per position (e.g., 0.10 = 10%). Defaults to MAX_POSITION_PCT env var.
+            min_quantity: Minimum order quantity (must be at least 1). Defaults to MIN_ORDER_QUANTITY env var.
+            order_type: Default order type. Defaults to ORDER_TYPE env var.
             tif: Default time-in-force. Defaults to "DAY".
         """
+        cfg = load_config()
         self.portfolio_tracker = portfolio_tracker
-        self.max_position_pct = max_position_pct
-        self.min_quantity = max(min_quantity, 1)
-        self.order_type = order_type
-        self.tif = tif
+        self.max_position_pct = max_position_pct if max_position_pct is not None else cfg.max_position_pct
+        self.min_quantity = max(min_quantity if min_quantity is not None else cfg.min_order_quantity, 1)
+        self.order_type = order_type if order_type is not None else cfg.order_type
+        self.tif = tif if tif is not None else "DAY"
         self._processed_signals: set[tuple[str, str]] = set()
 
     def is_duplicate(self, symbol: str, direction: str) -> bool:

@@ -13,6 +13,7 @@ from stock_market_expert.analysis.aggregation import AggregatedSignal, weighted_
 from stock_market_expert.analysis.macd import MacdResult, compute_macd
 from stock_market_expert.analysis.roc import RocResult, compute_roc
 from stock_market_expert.analysis.volume import VolumeResult, compute_volume_score
+from stock_market_expert.config.loader import load_config
 from stock_market_expert.data.alpaca_provider import AlpacaProvider
 from stock_market_expert.data.twelve_data_provider import TwelveDataProvider
 
@@ -52,15 +53,15 @@ class SignalEngine:
         alpaca_api_key: Optional[str] = None,
         alpaca_secret_key: Optional[str] = None,
         alpaca_base_url: Optional[str] = None,
-        history_days: int = 90,
-        macd_fast: int = 12,
-        macd_slow: int = 26,
-        macd_signal: int = 9,
-        roc_period: int = 10,
-        volume_lookback: int = 20,
-        buy_threshold: float = 0.3,
-        sell_threshold: float = -0.3,
-        min_confidence: float = 0.7,
+        history_days: Optional[int] = None,
+        macd_fast: Optional[int] = None,
+        macd_slow: Optional[int] = None,
+        macd_signal: Optional[int] = None,
+        roc_period: Optional[int] = None,
+        volume_lookback: Optional[int] = None,
+        buy_threshold: Optional[float] = None,
+        sell_threshold: Optional[float] = None,
+        min_confidence: Optional[float] = None,
     ):
         """Initialize the signal engine.
 
@@ -69,31 +70,32 @@ class SignalEngine:
             alpaca_api_key: Alpaca API key.
             alpaca_secret_key: Alpaca secret key.
             alpaca_base_url: Alpaca base URL.
-            history_days: Days of historical data to fetch.
-            macd_fast: MACD fast EMA period.
-            macd_slow: MACD slow EMA period.
-            macd_signal: MACD signal EMA period.
-            roc_period: ROC lookback period.
-            volume_lookback: Volume average lookback period.
-            buy_threshold: Score threshold for buy signal.
-            sell_threshold: Score threshold for sell signal.
-            min_confidence: Minimum confidence to emit a signal.
+            history_days: Days of historical data to fetch. Defaults to HISTORY_DAYS env var.
+            macd_fast: MACD fast EMA period. Defaults to MACD_FAST env var.
+            macd_slow: MACD slow EMA period. Defaults to MACD_SLOW env var.
+            macd_signal: MACD signal EMA period. Defaults to MACD_SIGNAL env var.
+            roc_period: ROC lookback period. Defaults to ROC_PERIOD env var.
+            volume_lookback: Volume average lookback period. Defaults to VOLUME_LOOKBACK env var.
+            buy_threshold: Score threshold for buy signal. Defaults to BUY_THRESHOLD env var.
+            sell_threshold: Score threshold for sell signal. Defaults to SELL_THRESHOLD env var.
+            min_confidence: Minimum confidence to emit a signal. Defaults to MIN_SIGNAL_CONFIDENCE env var.
         """
+        cfg = load_config()
         self.twelve_data = TwelveDataProvider(api_key=twelve_data_key)
         self.alpaca = AlpacaProvider(
             api_key=alpaca_api_key,
             secret_key=alpaca_secret_key,
             base_url=alpaca_base_url,
         )
-        self.history_days = history_days
-        self.macd_fast = macd_fast
-        self.macd_slow = macd_slow
-        self.macd_signal = macd_signal
-        self.roc_period = roc_period
-        self.volume_lookback = volume_lookback
-        self.buy_threshold = buy_threshold
-        self.sell_threshold = sell_threshold
-        self.min_confidence = min_confidence
+        self.history_days = history_days if history_days is not None else cfg.history_days
+        self.macd_fast = macd_fast if macd_fast is not None else cfg.macd_fast
+        self.macd_slow = macd_slow if macd_slow is not None else cfg.macd_slow
+        self.macd_signal = macd_signal if macd_signal is not None else cfg.macd_signal
+        self.roc_period = roc_period if roc_period is not None else cfg.roc_period
+        self.volume_lookback = volume_lookback if volume_lookback is not None else cfg.volume_lookback
+        self.buy_threshold = buy_threshold if buy_threshold is not None else cfg.buy_threshold
+        self.sell_threshold = sell_threshold if sell_threshold is not None else cfg.sell_threshold
+        self.min_confidence = min_confidence if min_confidence is not None else cfg.min_signal_confidence
         self._signal_history: dict[str, list[str]] = {}  # symbol -> list of directions
 
     def generate_signals(self, symbols: list[str]) -> list[TechnicalSignal]:

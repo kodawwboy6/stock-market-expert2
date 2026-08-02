@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from stock_market_expert.config.loader import load_config
 from stock_market_expert.execution.ibkr_client import IBKRClient
 from stock_market_expert.execution.order_builder import ExecutionOrder, OrderBuilder
 from stock_market_expert.execution.portfolio_tracker import PortfolioTracker
@@ -75,7 +76,8 @@ class ExecutionEngine:
         order_builder: Optional[OrderBuilder] = None,
         portfolio_tracker: Optional[PortfolioTracker] = None,
         paper_account: bool = True,
-        order_type: str = "MKT",
+        order_type: Optional[str] = None,
+        initial_cash: Optional[float] = None,
         cycle_deadline: Optional[float] = None,
     ):
         """Initialize the execution engine.
@@ -85,18 +87,21 @@ class ExecutionEngine:
             order_builder: Order builder instance.
             portfolio_tracker: Portfolio tracker instance.
             paper_account: Whether to use paper trading mode.
-            order_type: Default order type for all orders (e.g. "MKT", "LMT").
+            order_type: Default order type for all orders (e.g. "MKT", "LMT"). Defaults to ORDER_TYPE env var.
+            initial_cash: Initial cash balance for paper mode. Defaults to INITIAL_CASH env var.
             cycle_deadline: Epoch time — shared across all IBKR retries
                 for this execution cycle. Set at the start of each run
                 so retries leave enough time for the next cycle.
         """
+        cfg = load_config()
         self.portfolio_tracker = portfolio_tracker or PortfolioTracker()
         self.order_builder = order_builder or OrderBuilder(
-            self.portfolio_tracker, order_type=order_type,
+            self.portfolio_tracker, order_type=order_type or cfg.order_type,
         )
         self.ibkr = ibkr_client or IBKRClient(paper_account=paper_account)
         self.paper_account = paper_account
-        self.order_type = order_type
+        self.order_type = order_type or cfg.order_type
+        self._initial_cash = initial_cash if initial_cash is not None else cfg.initial_cash
         self._cycle_deadline = cycle_deadline
 
     async def run(
@@ -123,7 +128,11 @@ class ExecutionEngine:
             ExecutionResult with orders, fills, and portfolio state.
         """
         # Set the shared deadline for all IBKR retries in this cycle
-        self.ibkr._deadline = self._cycle_deadline or (time.time() + 300)
+        cfg = load_config()
+        cycle_deadline_sec = cfg.cycle_deadline
+        self.ibkr._deadline = self._cycle_deadline or (time.time() + cycle_deadline_sec)
+
+        effective_initial_cash = initial_cash if initial_cash is not None else self._initial_cash
 
         logger.info(f"=== Starting Execution Engine (Step 3) ===")
         logger.info(f"Paper account: {self.paper_account}")
@@ -136,56 +145,38 @@ class ExecutionEngine:
         if initial_cash is not None:
             self.portfolio_tracker.set_cash(initial_cash)
             equity = initial_cash
-            positions = {}
-        else:
+        elif connected:
             account_info = await self.ibkr.get_account_info()
-            equity = account_info.get("equity", 0.0)
-            positions = account_info.get("positions", {})
-            self.portfolio_tracker.set_cash(account_info.get("cash", 0.0))
+            equity = account_info.get("equity", effective_initial_cash)
+            self.portfolio_tracker.set_cash(account_info.get("cash", effective_initial_cash))
+            for symbol, qty in account_info.get("positions", {}).items():
+                self.portfolio_tracker.positions[symbol] = qty
+        else:
+            logger.info(f"Using initial cash: {effective_initial_cash}")
+            self.portfolio_tracker.set_cash(effective_initial_cash)
+            equity = effective_initial_cash
 
-        logger.info(f"Equity: {equity:.2f}, Cash: {self.portfolio_tracker.cash:.2f}")
+        # Step 3: Build orders
+        orders = self.order_builder.build_orders(signals, current_prices or {})
+        logger.info(f"Built {len(orders)} orders")
 
-        # Step 3: Build orders with sells-first ordering
-        prices = current_prices or {}
-        orders = self.order_builder.build_orders(signals, prices)
-
-        if not orders:
-            logger.info("No orders to execute.")
-            return ExecutionResult(
-                portfolio_state=self.portfolio_tracker.get_state(prices),
-            )
-
-        # Step 4: Execute orders — sells first, then buys
+        # Step 4: Execute orders
         fills = {}
         errors = []
-
         for order in orders:
-            fill = await self._execute_order(order, prices)
-            if fill and fill.get("status") not in ("failed", "deadline"):
+            fill = await self._execute_order(order, current_prices or {})
+            if fill:
                 fills[order.symbol] = fill
-                # Update portfolio after each order
                 self._update_portfolio_after_fill(order, fill)
             else:
-                error_msg = fill.get("message", "Unknown error") if fill else "No fill data"
-                errors.append(f"Failed to fill {order.side} {order.quantity} {order.symbol}: {error_msg}")
-                logger.error(f"Order failed: {order.side} {order.quantity} {order.symbol} — {error_msg}")
-
-        # Step 5: Get final portfolio state
-        portfolio_state = self.portfolio_tracker.get_state(prices)
-
-        # Disconnect
-        await self.ibkr.disconnect()
+                errors.append(f"Order for {order.symbol} returned no fill")
 
         result = ExecutionResult(
             orders=orders,
             fills=fills,
-            portfolio_state=portfolio_state,
             errors=errors,
         )
-
-        logger.info(
-            f"=== Execution Complete: {len(fills)} filled, {len(errors)} errors ==="
-        )
+        result.portfolio_state = self.portfolio_tracker.get_state(current_prices)
         return result
 
     async def _execute_order(
@@ -196,27 +187,19 @@ class ExecutionEngine:
         """Execute a single order.
 
         Args:
-            order: The execution order to place.
-            current_prices: Current market prices for fallback.
+            order: The execution order.
+            current_prices: Dict mapping symbol to current price.
 
         Returns:
-            Fill result dict, or None on failure.
+            Fill dict on success, None on failure.
         """
         price = current_prices.get(order.symbol, 0.0)
+        if price <= 0:
+            price = await self._get_current_price(order.symbol)
+            if price <= 0:
+                logger.warning(f"No price for {order.symbol}, skipping")
+                return None
 
-        if self.paper_account and price <= 0:
-            # Paper mode with no price data — simulate at a default price
-            logger.info(f"Simulating {order.side} order for {order.symbol}")
-            return {
-                "symbol": order.symbol,
-                "side": order.side,
-                "quantity": order.quantity,
-                "fill_price": 100.0,
-                "status": "simulated",
-                "message": "Paper mode — order simulated",
-            }
-
-        # Place the order via IBKR
         fill = await self.ibkr.place_order(
             symbol=order.symbol,
             quantity=order.quantity,
@@ -232,6 +215,22 @@ class ExecutionEngine:
             )
 
         return fill
+
+    async def _get_current_price(self, symbol: str) -> float:
+        """Get current price for a symbol from Alpaca or IBKR.
+
+        Args:
+            symbol: Stock ticker symbol.
+
+        Returns:
+            Current price per share, or 0 on failure.
+        """
+        try:
+            quote = self.ibkr.get_realtime_quote(symbol)
+            return quote.get("last_price", 0)
+        except Exception:
+            pass
+        return 0
 
     def _update_portfolio_after_fill(
         self,
@@ -273,7 +272,8 @@ class ExecutionEngine:
             ExecutionResult with fills and portfolio state.
         """
         # Set the shared deadline for all IBKR retries in this cycle
-        self.ibkr._deadline = self._cycle_deadline or (time.time() + 300)
+        cfg = load_config()
+        self.ibkr._deadline = self._cycle_deadline or (time.time() + cfg.cycle_deadline)
 
         # Separate sells and buys
         sells = [s for s in signals if s.direction == "sell"]

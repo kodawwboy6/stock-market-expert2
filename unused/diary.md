@@ -199,6 +199,8 @@ No explicit CODING_STANDARDS.md or CONTRIBUTING.md found. Review uses the smell 
 
 ### manual verify
 
+#### env
+
 I've checked the env file and found ORDER_TYPE was not being used. /diagnosing-bugs is used to fix this.
 
 after it is solved, i ask agent to check every env var. many of them are dead:
@@ -234,5 +236,13 @@ prompt:
 ```
 /writing-great-skills update /merge-this such that, when switching branch to main and there are some local changes, stash all changes to _temp, switch the branch, do fetch and pull, pop that stash
 ```
+
+#### hardcode constant
+
+```
+/to-ticket extract all hardcode constant as env var, such as pipline.py:258, max_retries value should be retrieved from env. all similar config should use same env, say retry max of all api call should use same env, which is set to 3 in env sample. explore the entire project to fix all hardcode constant. `/grill-me` for any uncertainty
+```
+
+agent get several fix about env without creating ticket
 
 TODO: try improve-codebase-architecture

@@ -54,23 +54,35 @@ class AppConfig(BaseSettings):
     bollinger_period: int = 20
     bollinger_std: int = 2
     history_days: int = 90
+    roc_period: int = 10
+    volume_lookback: int = 20
 
     # === Risk Management ===
     max_position_pct: float = 0.10
     min_signal_confidence: float = 0.7
     max_daily_trades: int = 10
     max_portfolio_risk_pct: float = 0.02
+    buy_threshold: float = 0.3
+    sell_threshold: float = -0.3
 
     # === Execution ===
     order_type: str = "MKT"
     auto_execute: bool = True
     paper_account: bool = True
+    min_order_quantity: int = 1
+    initial_cash: float = 100000.0
+
+    # === Retry ===
+    retry_max: int = 3
+    retry_delay_factor: float = 1.0
+    retry_max_delay: float = 60.0
 
     # === Scheduling ===
     run_mode: str = "continuous"
     schedule_cron: str = "0 9 * * *"
     execution_interval: int = 7200
     log_retention_days: int = 30
+    cycle_deadline: int = 300
 
     # === Logging ===
     log_level: str = "INFO"

@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 import httpx
 
+from stock_market_expert.config.loader import load_config
 from stock_market_expert.errors.handler import retry_with_backoff
 
 
@@ -34,7 +35,7 @@ class TwelveDataProvider:
         self,
         symbol: str,
         interval: str = "1day",
-        history_days: int = 90,
+        history_days: Optional[int] = None,
         fallback_date: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Fetch historical OHLCV data for a symbol.
@@ -42,7 +43,7 @@ class TwelveDataProvider:
         Args:
             symbol: Stock ticker symbol (e.g., "AAPL").
             interval: Time interval — "1min", "5min", "15min", "1hour", "1day".
-            history_days: Number of days of history to fetch.
+            history_days: Number of days of history to fetch. Defaults to HISTORY_DAYS env var.
             fallback_date: Date string for fallback data if all retries fail.
 
         Returns:
@@ -51,6 +52,9 @@ class TwelveDataProvider:
         Raises:
             Exception: If all retries fail and no fallback is provided.
         """
+        cfg = load_config()
+        history_days = history_days if history_days is not None else cfg.history_days
+
         end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         start_date = (datetime.now(timezone.utc) - timedelta(days=history_days)).strftime("%Y-%m-%d")
 
@@ -79,7 +83,6 @@ class TwelveDataProvider:
 
         result = retry_with_backoff(
             func=_fetch,
-            max_retries=3,
             fallback_date=fallback_date,
             fallback_data=fallback_data,
         )

@@ -59,9 +59,9 @@ class NewsPipeline:
         finnhub_api_key: Optional[str] = None,
         lm_studio_base_url: Optional[str] = None,
         lm_studio_model: Optional[str] = None,
-        news_category: str = "technology",
-        max_news_items: int = 50,
-        confidence_threshold: float = 0.6,
+        news_category: Optional[str] = None,
+        max_news_items: Optional[int] = None,
+        confidence_threshold: Optional[float] = None,
     ):
         """Initialize the news pipeline.
 
@@ -70,11 +70,10 @@ class NewsPipeline:
             finnhub_api_key: Finnhub API key. Defaults to config.
             lm_studio_base_url: LM Studio API URL. Defaults to config.
             lm_studio_model: LM Studio model name. Defaults to config.
-            news_category: News category to analyze.
-            max_news_items: Maximum news items to fetch.
-            confidence_threshold: Minimum confidence for operations.
+            news_category: News category to analyze. Defaults to NEWS_CATEGORY env var.
+            max_news_items: Maximum news items to fetch. Defaults to NEWS_MAX_ITEMS env var.
+            confidence_threshold: Minimum confidence for operations. Defaults to NEWS_CONFIDENCE_THRESHOLD env var.
         """
-        # Only load config when at least one key is missing (Issue #9)
         _config = None
         if api_key is None or finnhub_api_key is None or lm_studio_base_url is None or lm_studio_model is None:
             _config = load_config()
@@ -83,9 +82,10 @@ class NewsPipeline:
         self.finnhub_key = finnhub_api_key or (_config.finnhub_api_key if _config else "")
         self.lm_studio_base_url = lm_studio_base_url or (_config.lm_studio_base_url if _config else "")
         self.lm_studio_model = lm_studio_model or (_config.lm_studio_model if _config else "")
-        self.news_category = news_category
-        self.max_news_items = max_news_items
-        self.confidence_threshold = confidence_threshold
+        self.news_category = news_category or (_config.news_category if _config else "technology")
+        cfg = load_config()
+        self.max_news_items = max_news_items if max_news_items is not None else cfg.news_max_items
+        self.confidence_threshold = confidence_threshold if confidence_threshold is not None else cfg.news_confidence_threshold
 
         self.agent = Agent(
             base_url=self.lm_studio_base_url,
@@ -142,60 +142,61 @@ class NewsPipeline:
                 company_news_items.extend(company_news)
                 if company_fallback:
                     company_fallback_used = True
-                logger.info(f"Fetched {len(company_news)} company news items for {symbol}")
 
-        logger.info(f"Total company news items: {len(company_news_items)}")
+        if company_news_items:
+            logger.info(f"Fetched {len(company_news_items)} company news items")
 
         # Step 3: Run AI analysis
         logger.info("Step 3: Running AI analysis...")
         active_sectors, catalysts, operations = self._analyze_news(
             news_items, company_news_items
         )
+        logger.info(
+            f"Analysis complete: {len(active_sectors)} sectors, "
+            f"{len(catalysts)} catalysts, {len(operations)} operations"
+        )
 
-        # Step 4: Filter operations by confidence threshold
-        operations = [
-            op for op in operations if op.confidence >= self.confidence_threshold
-        ]
-
-        logger.info(f"Pipeline complete: {len(active_sectors)} sectors, "
-                     f"{len(catalysts)} catalysts, {len(operations)} operations")
-
-        fallback_used = news_fallback_used or company_fallback_used or bool(fallback_data)
         return NewsPipelineResult(
             active_sectors=active_sectors,
             catalysts=catalysts,
             operations=operations,
             news_count=len(news_items),
             company_news_count=len(company_news_items),
-            fallback_used=fallback_used,
+            fallback_used=news_fallback_used or company_fallback_used or bool(fallback_data),
             date_used=date.today().isoformat(),
         )
 
-    def _fetch_news(self, fallback_data: Optional[list[NewsItem]] = None) -> tuple[list[NewsItem], bool]:
-        """Fetch news with retry and fallback.
+    def _fetch_news(
+        self,
+        fallback_data: Optional[list[NewsItem]] = None,
+    ) -> tuple[list[NewsItem], bool]:
+        """Fetch news with fallback support.
+
+        Args:
+            fallback_data: Static news data to use if Alpha Vantage fails.
 
         Returns:
             Tuple of (news items, bool indicating if fallback was used).
         """
+        cfg = load_config()
         if not self.alpha_vantage_key:
-            logger.warning("Alpha Vantage API key not configured")
-            return [], False
+            logger.warning("Alpha Vantage API key not configured, returning fallback")
+            if fallback_data:
+                return fallback_data, True
+            return [], True
 
+        # Try with static fallback data first
         if fallback_data is not None:
-            # Use static fallback data when provided
-            items, fallback_used = fetch_news_with_fallback(
+            items, used = fetch_news_with_fallback(
                 api_key=self.alpha_vantage_key,
                 category=self.news_category,
-                max_retries=3,
                 fallback_data=fallback_data,
             )
-            return items, fallback_used or True
+            return items, used or True
 
         items, fallback_used = fetch_news_with_retry(
             api_key=self.alpha_vantage_key,
             category=self.news_category,
-            max_retries=3,
-            fallback_days=1,
         )
         return items, fallback_used
 
@@ -255,8 +256,6 @@ class NewsPipeline:
             symbol=symbol,
             date_from=today,
             date_to=today,
-            max_retries=3,
-            fallback_days=1,
         )
         return items, fallback_used
 

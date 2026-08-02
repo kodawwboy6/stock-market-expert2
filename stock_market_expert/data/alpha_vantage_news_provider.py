@@ -10,6 +10,8 @@ from typing import Optional
 
 import httpx
 
+from stock_market_expert.config.loader import load_config
+
 
 @dataclasses.dataclass
 class NewsItem:
@@ -99,9 +101,9 @@ class NewsProviderError(Exception):
 def fetch_news_with_retry(
     api_key: str,
     category: str,
-    max_retries: int = 3,
-    fallback_days: int = 1,
-) -> list[NewsItem]:
+    max_retries: Optional[int] = None,
+    fallback_days: Optional[int] = None,
+) -> tuple[list[NewsItem], bool]:
     """Fetch news with retry and fallback to previous days.
 
     Tries up to max_retries times with exponential backoff.
@@ -111,8 +113,8 @@ def fetch_news_with_retry(
     Args:
         api_key: Alpha Vantage API key.
         category: News category (e.g., "technology").
-        max_retries: Number of retries per date attempt.
-        fallback_days: How many days back to start falling back.
+        max_retries: Number of retries per date attempt. Defaults to RETRY_MAX env var.
+        fallback_days: How many days back to start falling back. Defaults to 1.
 
     Returns:
         Tuple of (list of NewsItem objects, bool indicating if fallback was used).
@@ -120,7 +122,13 @@ def fetch_news_with_retry(
     import logging
     import time
 
+    from stock_market_expert.errors.handler import retry_with_backoff
+
     logger = logging.getLogger(__name__)
+    cfg = load_config()
+    max_retries = max_retries if max_retries is not None else cfg.retry_max
+    fallback_days = fallback_days if fallback_days is not None else 1
+
     provider = AlphaVantageNewsProvider(api_key)
 
     # Try today first
@@ -135,7 +143,7 @@ def fetch_news_with_retry(
         except Exception as e:
             last_exception = e
             if attempt < max_retries:
-                delay = min(1.0 * (2 ** attempt), 60.0)
+                delay = min(cfg.retry_delay_factor * (2 ** attempt), cfg.retry_max_delay)
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                     f"Retrying in {delay:.1f}s..."
@@ -164,7 +172,7 @@ def fetch_news_with_retry(
             except Exception as e:
                 last_exception = e
                 if attempt < max_retries:
-                    delay = min(1.0 * (2 ** attempt), 60.0)
+                    delay = min(cfg.retry_delay_factor * (2 ** attempt), cfg.retry_max_delay)
                     logger.warning(
                         f"Fallback attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                         f"Retrying in {delay:.1f}s..."
@@ -185,7 +193,7 @@ def fetch_news_with_retry(
 def fetch_news_with_fallback(
     api_key: str,
     category: str,
-    max_retries: int = 3,
+    max_retries: Optional[int] = None,
     fallback_data: Optional[list[NewsItem]] = None,
 ) -> tuple[list[NewsItem], bool]:
     """Fetch news with retry and optional static fallback data.
@@ -197,7 +205,7 @@ def fetch_news_with_fallback(
     Args:
         api_key: Alpha Vantage API key.
         category: News category (e.g., "technology").
-        max_retries: Number of retries.
+        max_retries: Number of retries. Defaults to RETRY_MAX env var.
         fallback_data: Static data to return if API fails.
 
     Returns:
@@ -207,6 +215,9 @@ def fetch_news_with_fallback(
     import time
 
     logger = logging.getLogger(__name__)
+    cfg = load_config()
+    max_retries = max_retries if max_retries is not None else cfg.retry_max
+
     provider = AlphaVantageNewsProvider(api_key)
 
     for attempt in range(max_retries + 1):
@@ -216,7 +227,7 @@ def fetch_news_with_fallback(
                 return items, False
         except Exception as e:
             if attempt < max_retries:
-                delay = min(1.0 * (2 ** attempt), 60.0)
+                delay = min(cfg.retry_delay_factor * (2 ** attempt), cfg.retry_max_delay)
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                     f"Retrying in {delay:.1f}s..."
