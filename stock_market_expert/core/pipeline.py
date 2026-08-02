@@ -62,6 +62,7 @@ class NewsPipeline:
         news_category: Optional[str] = None,
         max_news_items: Optional[int] = None,
         confidence_threshold: Optional[float] = None,
+        news_symbols_limit: Optional[int] = None,
     ):
         """Initialize the news pipeline.
 
@@ -73,6 +74,7 @@ class NewsPipeline:
             news_category: News category to analyze. Defaults to NEWS_CATEGORY env var.
             max_news_items: Maximum news items to fetch. Defaults to NEWS_MAX_ITEMS env var.
             confidence_threshold: Minimum confidence for operations. Defaults to NEWS_CONFIDENCE_THRESHOLD env var.
+            news_symbols_limit: Maximum symbols to extract. Defaults to NEWS_SYMBOLS_LIMIT env var.
         """
         cfg = load_config()
 
@@ -83,6 +85,7 @@ class NewsPipeline:
         self.news_category = news_category or cfg.news_category
         self.max_news_items = max_news_items if max_news_items is not None else cfg.news_max_items
         self.confidence_threshold = confidence_threshold if confidence_threshold is not None else cfg.news_confidence_threshold
+        self.news_symbols_limit = news_symbols_limit if news_symbols_limit is not None else cfg.news_symbols_limit
 
         self.agent = Agent(
             base_url=self.lm_studio_base_url,
@@ -199,6 +202,9 @@ class NewsPipeline:
     def _extract_symbols(self, news_items: list[NewsItem]) -> list[str]:
         """Extract unique stock symbols from news items.
 
+        Symbols are sorted by how many times each ticker appears across
+        all news items (descending), then truncated to the configured limit.
+
         Primary source: ticker_sentiment from the Alpha Vantage API.
         Fallback: heuristic scan of headlines for uppercase words.
 
@@ -206,15 +212,15 @@ class NewsPipeline:
             news_items: List of news items.
 
         Returns:
-            List of unique stock symbols.
+            List of unique stock symbols, sorted by occurrence count.
         """
-        symbols = set()
+        ticker_counts: dict[str, int] = {}
 
         for item in news_items:
             # Primary: use structured ticker_sentiment data from API
             for ts in item.ticker_sentiment:
                 if ts.ticker:
-                    symbols.add(ts.ticker)
+                    ticker_counts[ts.ticker] = ticker_counts.get(ts.ticker, 0) + 1
 
         # Filter out common non-ticker words
         non_tickers = {
@@ -225,10 +231,13 @@ class NewsPipeline:
             "GOOD", "FIRST", "LAST", "LONG", "GREAT", "LITTLE", "OWN",
             "OTHER",
         }
-        symbols -= non_tickers
+        ticker_counts = {k: v for k, v in ticker_counts.items() if k not in non_tickers}
 
-        # Limit to reasonable number of symbols
-        return sorted(list(symbols))[:20]
+        # Sort by occurrence count descending, then alphabetically for stability
+        symbols = sorted(ticker_counts.keys(), key=lambda s: (-ticker_counts[s], s))
+
+        # Apply configurable limit
+        return symbols[: self.news_symbols_limit]
 
     def _fetch_company_news(self, symbol: str) -> tuple[list[CompanyNews], bool]:
         """Fetch company news with retry and fallback.
