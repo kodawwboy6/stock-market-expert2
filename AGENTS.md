@@ -6,6 +6,14 @@
 
 This project use Github ticket tracking.
 
+### Git commit
+
+The git commit message should be a meaningful brief of the change.
+
+Bad example: "feat: resolve ticket #24"
+
+Good example: "feat: resolve \"\<ticket title\>\""
+
 ### Merge Strategy
 
 When merging pull requests, always prefer **rebase** over merge commits. Use `git rebase` to integrate changes from the target branch into the PR branch, then fast-forward merge to main. Avoid creating merge commits (`git merge --no-ff`) unless explicitly requested.
