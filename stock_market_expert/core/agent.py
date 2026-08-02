@@ -156,9 +156,9 @@ class Agent:
         for i, item in enumerate(news_items):
             prompt += f"News {i + 1}:\n"
             prompt += f"  Headline: {item.get('headline', '')}\n"
-            prompt += f"  Body: {item.get('body', '')}\n"
+            prompt += f"  Summary: {item.get('summary', '')}\n"
+            prompt += f"  Overall Sentiment: {item.get('overall_sentiment_label', 'unknown')} (score: {item.get('overall_sentiment_score', 'N/A')})\n"
             prompt += f"  Categories: {', '.join(item.get('categories', []))}\n"
-            prompt += f"  Sentiment: {item.get('sentiment', 'unknown')}\n"
             prompt += f"  Source: {item.get('source', '')}\n"
             prompt += f"  Time: {item.get('time_published', '')}\n\n"
 
@@ -211,11 +211,24 @@ Guidelines for analysis:
             for i, item in enumerate(news_items):
                 prompt += f"News {i + 1}:\n"
                 prompt += f"  Headline: {item.get('headline', '')}\n"
-                prompt += f"  Body: {item.get('body', '')}\n"
+                prompt += f"  Summary: {item.get('summary', '')}\n"
                 prompt += f"  Categories: {', '.join(item.get('categories', []))}\n"
-                prompt += f"  Sentiment: {item.get('sentiment', 'unknown')}\n"
+                prompt += f"  Overall Sentiment: {item.get('overall_sentiment_label', 'unknown')} (score: {item.get('overall_sentiment_score', 'N/A')})\n"
                 prompt += f"  Source: {item.get('source', '')}\n"
-                prompt += f"  Time: {item.get('time_published', '')}\n\n"
+                prompt += f"  Time: {item.get('time_published', '')}\n"
+                # Per-ticker sentiment from Alpha Vantage
+                ticker_sentiments = item.get('ticker_sentiment', [])
+                if ticker_sentiments:
+                    prompt += "  Ticker Sentiments:\n"
+                    for ts in ticker_sentiments:
+                        prompt += f"    - {ts.get('ticker', '')}: {ts.get('sentiment_label', 'unknown')} (score: {ts.get('sentiment_score', 'N/A')}, relevance: {ts.get('relevance_score', 'N/A')})\n"
+                # Topics from Alpha Vantage
+                topics = item.get('topics', [])
+                if topics:
+                    prompt += "  Topics:\n"
+                    for t in topics:
+                        prompt += f"    - {t.get('topic', '')} (relevance: {t.get('relevance_score', 'N/A')})\n"
+                prompt += "\n"
 
         if company_news:
             prompt += "=== Company News ===\n\n"
@@ -272,6 +285,7 @@ Guidelines:
 3. Recommend specific buy/sell/short operations with confidence scores
 4. Confidence scores should reflect certainty (0.0 = no confidence, 1.0 = very confident)
 5. Only recommend operations when there is a clear catalyst and sufficient evidence
+6. Use the per-ticker sentiment scores to weight your confidence in each recommendation
 """
 
         return prompt
