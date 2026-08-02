@@ -77,3 +77,13 @@ _Avoid_: frequency, period, schedule
 **Structural Log**:
 A structured JSON-formatted log entry capturing timestamp, level, step, action, and details for observability.
 _Avoid_: plain log, text log, debug output
+
+## AI Inference
+
+**LLM Service**:
+The local LM Studio HTTP API (`http://localhost:1234/v1/chat/completions`) that performs news analysis via chat completion requests. All calls must specify `timeout=7200.0` (2 hours).
+_Avoid_: local model, inference engine, LM Studio URL
+
+## Specification
+
+Project specification is in the file spec.md.

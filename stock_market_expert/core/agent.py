@@ -93,6 +93,7 @@ class Agent:
                 ],
                 "temperature": 0.1,
             },
+            timeout=7200.0,
         )
         response.raise_for_status()
         data = response.json()
@@ -134,6 +135,7 @@ class Agent:
                 ],
                 "temperature": 0.1,
             },
+            timeout=7200.0,
         )
         response.raise_for_status()
         data = response.json()

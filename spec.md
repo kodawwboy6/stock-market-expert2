@@ -53,8 +53,8 @@ A Python application that runs in a continuous loop (every 2 hours), sequentiall
 - Step 1: News analysis — extract active sectors, catalysts, operation recommendations
 - Step 2: Technical analysis — compute indicators and generate signals
 
+- All LLM HTTP calls use `timeout=7200.0` (2 hours) — local inference can take minutes
 ### Technical Analysis
-- **MACD** (12, 26, 9) — trend detection, weight 0.5
 - **ROC** (10-day) — momentum detection, weight 0.2
 - **Volume** (relative to average) — confirmation, weight 0.3
 - Deterministic weighted aggregation: `score = MACD × 0.5 + Volume × 0.3 + ROC × 0.2`
