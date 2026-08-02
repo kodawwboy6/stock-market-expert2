@@ -298,9 +298,11 @@ class NewsPipeline:
                 "headline": item.headline,
                 "summary": item.summary,
                 "source": item.source,
-                "symbols": item.symbols or [],
-                "related": item.related or [],
-                "time_published": item.time_published,
+                "datetime": item.datetime,
+                "related": item.related,
+                "id": item.id,
+                "image": item.image,
+                "category": item.category,
             }
             for item in company_news_items
         ]
