@@ -268,4 +268,6 @@ agent complete the doc with wrong understanding of api. prompt to ask it use `/r
 
 a new skill `/do-ticket` is created for the ease of working on ticket. it performs very well for working on those 4 tickets
 
+added a skill `/send-noti` to use command "notify-send" to send notification to user. updated `/do-ticket` to use that skill
+
 TODO: try improve-codebase-architecture
