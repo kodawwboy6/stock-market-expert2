@@ -199,7 +199,8 @@ class NewsPipeline:
     def _extract_symbols(self, news_items: list[NewsItem]) -> list[str]:
         """Extract unique stock symbols from news items.
 
-        Looks for ticker symbols in headlines, body text, and categories.
+        Primary source: ticker_sentiment from the Alpha Vantage API.
+        Fallback: heuristic scan of headlines for uppercase words.
 
         Args:
             news_items: List of news items.
@@ -210,14 +211,13 @@ class NewsPipeline:
         symbols = set()
 
         for item in news_items:
-            # Look for ticker symbols in headline (uppercase words with 1-5 chars)
-            for word in item.headline.split():
-                word = word.strip(".,!?;:")
-                if 2 <= len(word) <= 5 and word.isupper() and word.isalpha():
-                    symbols.add(word)
+            # Primary: use structured ticker_sentiment data from API
+            for ts in item.ticker_sentiment:
+                if ts.ticker:
+                    symbols.add(ts.ticker)
 
-            # Look for ticker symbols in body
-            for word in item.body.split():
+            # Fallback: heuristic scan of headline for uppercase words (2-5 chars)
+            for word in item.headline.split():
                 word = word.strip(".,!?;:")
                 if 2 <= len(word) <= 5 and word.isupper() and word.isalpha():
                     symbols.add(word)
@@ -225,11 +225,11 @@ class NewsPipeline:
         # Filter out common non-ticker words
         non_tickers = {
             "THE", "AND", "FOR", "NEW", "NOT", "BUT", "ALL", "HAS",
-            "HAS", "HOW", "WHO", "WHY", "WHO", "WHO", "WHO", "WHO",
-            "THEY", "THIS", "THAT", "WITH", "FROM", "HAVE", "SAYS",
-            "MORE", "OVER", "SAME", "WILL", "EACH", "MAKE", "LIKE",
-            "JUST", "ONLY", "TODAY", "YEAR", "YEAR", "MANY", "GOOD",
-            "FIRST", "LAST", "LONG", "GREAT", "LITTLE", "OWN", "OTHER",
+            "HOW", "WHO", "WHY", "THEY", "THIS", "THAT", "WITH", "FROM",
+            "HAVE", "SAYS", "MORE", "OVER", "SAME", "WILL", "EACH",
+            "MAKE", "LIKE", "JUST", "ONLY", "TODAY", "YEAR", "MANY",
+            "GOOD", "FIRST", "LAST", "LONG", "GREAT", "LITTLE", "OWN",
+            "OTHER",
         }
         symbols -= non_tickers
 
@@ -276,11 +276,25 @@ class NewsPipeline:
         news_dicts = [
             {
                 "headline": item.headline,
-                "body": item.body,
+                "summary": item.summary,
                 "categories": item.categories,
                 "source": item.source,
                 "time_published": item.time_published,
-                "sentiment": item.sentiment,
+                "overall_sentiment_score": item.overall_sentiment_score,
+                "overall_sentiment_label": item.overall_sentiment_label,
+                "ticker_sentiment": [
+                    {
+                        "ticker": ts.ticker,
+                        "relevance_score": ts.relevance_score,
+                        "sentiment_score": ts.ticker_sentiment_score,
+                        "sentiment_label": ts.ticker_sentiment_label,
+                    }
+                    for ts in item.ticker_sentiment
+                ],
+                "topics": [
+                    {"topic": t.topic, "relevance_score": t.relevance_score}
+                    for t in item.topics
+                ],
             }
             for item in news_items
         ]

@@ -50,11 +50,12 @@ class TestNewsPipeline:
             [
                 NewsItem(
                     headline="AI Company Launches New Product",
-                    body="A leading AI company announced a breakthrough product.",
+                    summary="A leading AI company announced a breakthrough product.",
                     categories=["technology", "ai"],
                     source="Tech News",
                     time_published="2024-01-15T10:00:00Z",
-                    sentiment="positive",
+                    overall_sentiment_score=0.5,
+                    overall_sentiment_label="Somewhat-Bullish",
                 )
             ],
             False,
@@ -140,14 +141,14 @@ class TestNewsPipeline:
         news_items = [
             NewsItem(
                 headline="AAPL Reports Strong Earnings",
-                body="Apple Inc. (AAPL) reported strong quarterly earnings, beating expectations.",
+                summary="Apple Inc. (AAPL) reported strong quarterly earnings, beating expectations.",
                 categories=["technology", "earnings"],
                 source="Tech News",
                 time_published="2024-01-15T10:00:00Z",
             ),
             NewsItem(
                 headline="NVDA Announces New AI Chip",
-                body="NVIDIA (NVDA) announced a new AI chip for data centers.",
+                summary="NVIDIA (NVDA) announced a new AI chip for data centers.",
                 categories=["technology", "ai"],
                 source="Industry News",
                 time_published="2024-01-15T11:00:00Z",
@@ -166,7 +167,7 @@ class TestNewsPipeline:
         news_items = [
             NewsItem(
                 headline="THE NEW YEAR EACH HAS GOOD NEWS",
-                body="ALL OVER THE WORLD SAME YEAR",
+                summary="ALL OVER THE WORLD SAME YEAR",
                 categories=["technology"],
                 source="Test Source",
                 time_published="2024-01-15T10:00:00Z",
@@ -194,7 +195,7 @@ class TestNewsPipeline:
         news_items = [
             NewsItem(
                 headline=headline,
-                body="",
+                summary="",
                 categories=["technology"],
                 source="Test Source",
                 time_published="2024-01-15T10:00:00Z",
@@ -249,7 +250,7 @@ class TestNewsPipeline:
         fallback_data = [
             NewsItem(
                 headline="Fallback News",
-                body="Fallback body",
+                summary="Fallback summary",
                 categories=["technology"],
                 source="Fallback",
                 time_published="2024-01-15T10:00:00Z",
@@ -274,7 +275,7 @@ class TestNewsPipeline:
             [
                 NewsItem(
                     headline="Real News",
-                    body="Real body",
+                    summary="Real summary",
                     categories=["technology"],
                     source="Real",
                     time_published="2024-01-15T10:00:00Z",
