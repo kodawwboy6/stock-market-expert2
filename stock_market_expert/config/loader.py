@@ -28,6 +28,7 @@ class AppConfig(BaseSettings):
     alpaca_api_key: str = ""
     alpaca_secret_key: str = ""
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
+    alpaca_market_data_base_url: str = "https://data.alpaca.markets"
 
     # === IBKR ===
     ibkr_trading_client_id: str = ""
