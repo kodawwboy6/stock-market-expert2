@@ -7,6 +7,8 @@ import pytest
 from stock_market_expert.data.alpha_vantage_news_provider import (
     AlphaVantageNewsProvider,
     NewsItem,
+    Topic,
+    TickerSentiment,
 )
 
 
@@ -19,18 +21,37 @@ class TestAlphaVantageNewsProvider:
             "feed": [
                 {
                     "title": "Test Headline",
-                    "body": "Test body content",
+                    "summary": "Test summary content",
                     "categories": ["technology"],
                     "source": "Test Source",
-                    "time_published": "2024-01-15T10:00:00Z",
-                    "sentiment": "positive",
+                    "time_published": "20260115T100000",
                     "url": "https://example.com/test",
+                    "overall_sentiment_score": 0.25,
+                    "overall_sentiment_label": "Somewhat-Bullish",
+                    "topics": [
+                        {"topic": "earnings", "relevance_score": "0.95"},
+                    ],
+                    "ticker_sentiment": [
+                        {
+                            "ticker": "AAPL",
+                            "relevance_score": "0.80",
+                            "ticker_sentiment_score": "0.30",
+                            "ticker_sentiment_label": "Somewhat-Bullish",
+                        }
+                    ],
+                    "banner_image": "https://example.com/banner.jpg",
+                    "authors": ["John Doe", "Jane Smith"],
+                    "category_within_source": "Technology",
+                    "source_domain": "example.com",
                 }
             ]
         }
 
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
 
             provider = AlphaVantageNewsProvider(api_key="test_key")
             result = provider.fetch_news(category="technology")
@@ -38,24 +59,109 @@ class TestAlphaVantageNewsProvider:
             assert len(result) == 1
             assert isinstance(result[0], NewsItem)
             assert result[0].headline == "Test Headline"
-            assert result[0].body == "Test body content"
+            assert result[0].summary == "Test summary content"
             assert result[0].categories == ["technology"]
             assert result[0].source == "Test Source"
-            assert result[0].time_published == "2024-01-15T10:00:00Z"
-            assert result[0].sentiment == "positive"
+            assert result[0].time_published == "20260115T100000"
             assert result[0].url == "https://example.com/test"
+            assert result[0].overall_sentiment_score == 0.25
+            assert result[0].overall_sentiment_label == "Somewhat-Bullish"
+            assert len(result[0].topics) == 1
+            assert result[0].topics[0].topic == "earnings"
+            assert result[0].topics[0].relevance_score == 0.95
+            assert len(result[0].ticker_sentiment) == 1
+            assert result[0].ticker_sentiment[0].ticker == "AAPL"
+            assert result[0].ticker_sentiment[0].ticker_sentiment_score == 0.30
+            assert result[0].banner_image == "https://example.com/banner.jpg"
+            assert result[0].authors == ["John Doe", "Jane Smith"]
+            assert result[0].category_within_source == "Technology"
+            assert result[0].source_domain == "example.com"
 
     def test_fetch_news_handles_empty_response(self):
         """Fetching news with no results should return an empty list."""
         mock_response = {"feed": []}
 
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
 
             provider = AlphaVantageNewsProvider(api_key="test_key")
             result = provider.fetch_news(category="technology")
 
             assert result == []
+
+    def test_fetch_news_handles_null_banner_image(self):
+        """banner_image can be null and should be handled gracefully."""
+        mock_response = {
+            "feed": [
+                {
+                    "title": "Test Headline",
+                    "summary": "Test summary",
+                    "categories": ["technology"],
+                    "source": "Test Source",
+                    "time_published": "20260115T100000",
+                    "url": "https://example.com/test",
+                    "overall_sentiment_score": 0.1,
+                    "overall_sentiment_label": "Neutral",
+                    "topics": [],
+                    "ticker_sentiment": [],
+                    "banner_image": None,
+                    "authors": [],
+                    "category_within_source": None,
+                    "source_domain": None,
+                }
+            ]
+        }
+
+        with patch("httpx.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
+
+            provider = AlphaVantageNewsProvider(api_key="test_key")
+            result = provider.fetch_news(category="technology")
+
+            assert len(result) == 1
+            assert result[0].banner_image is None
+            assert result[0].authors == []
+            assert result[0].category_within_source is None
+            assert result[0].source_domain is None
+
+    def test_fetch_news_handles_empty_authors_array(self):
+        """authors can be an empty array and should be handled gracefully."""
+        mock_response = {
+            "feed": [
+                {
+                    "title": "Test Headline",
+                    "summary": "Test summary",
+                    "categories": ["technology"],
+                    "source": "Test Source",
+                    "time_published": "20260115T100000",
+                    "url": "https://example.com/test",
+                    "overall_sentiment_score": 0.1,
+                    "overall_sentiment_label": "Neutral",
+                    "topics": [],
+                    "ticker_sentiment": [],
+                    "banner_image": "https://example.com/banner.jpg",
+                    "authors": [],
+                }
+            ]
+        }
+
+        with patch("httpx.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
+
+            provider = AlphaVantageNewsProvider(api_key="test_key")
+            result = provider.fetch_news(category="technology")
+
+            assert len(result) == 1
+            assert result[0].authors == []
 
     def test_fetch_news_raises_on_api_error(self):
         """Fetching news with an API error should raise an exception."""
@@ -72,7 +178,10 @@ class TestAlphaVantageNewsProvider:
         mock_response = {"feed": []}
 
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
 
             provider = AlphaVantageNewsProvider(api_key="test_key")
             provider.fetch_news(category="technology")
@@ -88,7 +197,10 @@ class TestAlphaVantageNewsProvider:
         mock_response = {"feed": []}
 
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
 
             provider = AlphaVantageNewsProvider(api_key="test_key")
             provider.fetch_news(category="technology", date="2024-01-15")
@@ -108,18 +220,30 @@ class TestFetchNewsWithRetry:
             "feed": [
                 {
                     "title": "Test Headline",
-                    "body": "Test body",
+                    "summary": "Test summary",
                     "categories": ["technology"],
                     "source": "Test Source",
-                    "time_published": "2024-01-15T10:00:00Z",
+                    "time_published": "20260115T100000",
+                    "overall_sentiment_score": 0.2,
+                    "overall_sentiment_label": "Somewhat-Bullish",
+                    "topics": [],
+                    "ticker_sentiment": [],
+                    "banner_image": None,
+                    "authors": [],
                 }
             ]
         }
 
         with patch("httpx.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value=mock_response))
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = mock_response
+            mock_get.return_value = mock_resp
 
-            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__(
+                "stock_market_expert.data.alpha_vantage_news_provider",
+                fromlist=["fetch_news_with_retry"],
+            ).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=3,
@@ -129,6 +253,7 @@ class TestFetchNewsWithRetry:
             assert len(result) == 1
             assert not fallback_used
             assert result[0].headline == "Test Headline"
+            assert result[0].summary == "Test summary"
             mock_get.assert_called_once()
 
     def test_returns_empty_on_failure(self):
@@ -136,7 +261,10 @@ class TestFetchNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__(
+                "stock_market_expert.data.alpha_vantage_news_provider",
+                fromlist=["fetch_news_with_retry"],
+            ).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=2,
@@ -145,8 +273,7 @@ class TestFetchNewsWithRetry:
 
             assert result == []
             assert not fallback_used
-            # 1 initial + 2 retries on today + 6 fallback days * 3 retries each = 2 + 18 = 20
-            # But the code does max_retries + 1 calls per date, so: 3 + 6 * 3 = 21
+            # 1 initial + 2 retries on today + 6 fallback days * 3 retries each
             assert mock_get.call_count == 21
 
     def test_falls_back_to_previous_day(self):
@@ -167,10 +294,16 @@ class TestFetchNewsWithRetry:
                     "feed": [
                         {
                             "title": "Fallback Headline",
-                            "body": "Fallback body",
+                            "summary": "Fallback summary",
                             "categories": ["technology"],
                             "source": "Test Source",
-                            "time_published": "2024-01-14T10:00:00Z",
+                            "time_published": "20260114T100000",
+                            "overall_sentiment_score": 0.1,
+                            "overall_sentiment_label": "Neutral",
+                            "topics": [],
+                            "ticker_sentiment": [],
+                            "banner_image": None,
+                            "authors": [],
                         }
                     ]
                 }
@@ -179,7 +312,10 @@ class TestFetchNewsWithRetry:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = side_effect
 
-            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_retry"]).fetch_news_with_retry(
+            result, fallback_used = __import__(
+                "stock_market_expert.data.alpha_vantage_news_provider",
+                fromlist=["fetch_news_with_retry"],
+            ).fetch_news_with_retry(
                 api_key="test_key",
                 category="technology",
                 max_retries=0,
@@ -188,6 +324,7 @@ class TestFetchNewsWithRetry:
 
             assert len(result) == 1
             assert result[0].headline == "Fallback Headline"
+            assert result[0].summary == "Fallback summary"
             assert fallback_used
 
 
@@ -199,17 +336,20 @@ class TestFetchNewsWithFallback:
         fallback = [
             NewsItem(
                 headline="Fallback Headline",
-                body="Fallback body",
+                summary="Fallback summary",
                 categories=["technology"],
                 source="Fallback Source",
-                time_published="2024-01-15T10:00:00Z",
+                time_published="20260115T100000",
             )
         ]
 
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
+            result, fallback_used = __import__(
+                "stock_market_expert.data.alpha_vantage_news_provider",
+                fromlist=["fetch_news_with_fallback"],
+            ).fetch_news_with_fallback(
                 api_key="test_key",
                 category="technology",
                 max_retries=1,
@@ -218,6 +358,7 @@ class TestFetchNewsWithFallback:
 
             assert len(result) == 1
             assert result[0].headline == "Fallback Headline"
+            assert result[0].summary == "Fallback summary"
             assert fallback_used
 
     def test_returns_empty_without_fallback(self):
@@ -225,7 +366,10 @@ class TestFetchNewsWithFallback:
         with patch("httpx.get") as mock_get:
             mock_get.side_effect = Exception("API Error")
 
-            result, fallback_used = __import__("stock_market_expert.data.alpha_vantage_news_provider", fromlist=["fetch_news_with_fallback"]).fetch_news_with_fallback(
+            result, fallback_used = __import__(
+                "stock_market_expert.data.alpha_vantage_news_provider",
+                fromlist=["fetch_news_with_fallback"],
+            ).fetch_news_with_fallback(
                 api_key="test_key",
                 category="technology",
                 max_retries=1,
