@@ -2,6 +2,10 @@
 
 ## Repository Guidelines
 
+### Ticket tracking
+
+This project use Github ticket tracking.
+
 ### Merge Strategy
 
 When merging pull requests, always prefer **rebase** over merge commits. Use `git rebase` to integrate changes from the target branch into the PR branch, then fast-forward merge to main. Avoid creating merge commits (`git merge --no-ff`) unless explicitly requested.
