@@ -264,4 +264,8 @@ I've found that the codes about the alpha vantage api call are not following the
 
 agent complete the doc with wrong understanding of api. prompt to ask it use `/research` for this task, and make sure it is 100% correct.
 
+4 tickets was generated for 4 api providers.
+
+a new skill `/do-ticket` is created for the ease of working on ticket.
+
 TODO: try improve-codebase-architecture
