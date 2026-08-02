@@ -74,16 +74,13 @@ class NewsPipeline:
             max_news_items: Maximum news items to fetch. Defaults to NEWS_MAX_ITEMS env var.
             confidence_threshold: Minimum confidence for operations. Defaults to NEWS_CONFIDENCE_THRESHOLD env var.
         """
-        _config = None
-        if api_key is None or finnhub_api_key is None or lm_studio_base_url is None or lm_studio_model is None:
-            _config = load_config()
-
-        self.alpha_vantage_key = api_key or (_config.alpha_vantage_api_key if _config else "")
-        self.finnhub_key = finnhub_api_key or (_config.finnhub_api_key if _config else "")
-        self.lm_studio_base_url = lm_studio_base_url or (_config.lm_studio_base_url if _config else "")
-        self.lm_studio_model = lm_studio_model or (_config.lm_studio_model if _config else "")
-        self.news_category = news_category or (_config.news_category if _config else "technology")
         cfg = load_config()
+
+        self.alpha_vantage_key = api_key or cfg.alpha_vantage_api_key
+        self.finnhub_key = finnhub_api_key or cfg.finnhub_api_key
+        self.lm_studio_base_url = lm_studio_base_url or cfg.lm_studio_base_url
+        self.lm_studio_model = lm_studio_model or cfg.lm_studio_model
+        self.news_category = news_category or cfg.news_category
         self.max_news_items = max_news_items if max_news_items is not None else cfg.news_max_items
         self.confidence_threshold = confidence_threshold if confidence_threshold is not None else cfg.news_confidence_threshold
 
@@ -178,7 +175,6 @@ class NewsPipeline:
         Returns:
             Tuple of (news items, bool indicating if fallback was used).
         """
-        cfg = load_config()
         if not self.alpha_vantage_key:
             logger.warning("Alpha Vantage API key not configured, returning fallback")
             if fallback_data:
