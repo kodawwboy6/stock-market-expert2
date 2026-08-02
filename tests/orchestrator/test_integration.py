@@ -1,7 +1,7 @@
 """Full end-to-end integration tests for the orchestrator.
 
 Tests the complete pipeline flow:
-  Step 1 (News Analysis) -> Step 2 (Signal Generation) -> Step 3 (Execution)
+  News Analysis -> Signal Generation -> Execution
 
 Uses mocking to avoid external API calls while verifying:
   - Sequential step execution
@@ -25,7 +25,7 @@ import pytest
 from stock_market_expert.core.pipeline import NewsPipelineResult, ActiveSector, OperationRecommendation, Catalyst
 from stock_market_expert.analysis.signal_engine import TechnicalSignal
 from stock_market_expert.execution.executor import ExecutionResult, ExecutionOrder
-from main import run_cycle, run_step1, run_step2, run_step3, _persist_signals, _shutdown
+from main import run_cycle, run_news_pipeline, run_signal_generation, run_order_execution, _persist_signals, _shutdown
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -123,15 +123,15 @@ def mock_signals():
     ]
 
 
-# ── Step 1 tests ─────────────────────────────────────────────────────
+# ── News Analysis tests ─────────────────────────────────────────────────────
 
-class TestRunStep1:
-    """Tests for run_step1 (News Analysis)."""
+class TestNewsPipeline:
+    """Tests for run_news_pipeline (News Analysis)."""
 
     @pytest.mark.asyncio
     @patch("main.NewsPipeline")
-    async def test_step1_returns_result(self, mock_pipeline_class, mock_config):
-        """run_step1 should return a NewsPipelineResult."""
+    async def test_news_pipeline_returns_result(self, mock_pipeline_class, mock_config):
+        """run_news_pipeline should return a NewsPipelineResult."""
         mock_result = MagicMock(spec=NewsPipelineResult)
         mock_result.active_sectors = []
         mock_result.operations = []
@@ -139,14 +139,14 @@ class TestRunStep1:
         mock_instance.run.return_value = mock_result
         mock_pipeline_class.return_value = mock_instance
 
-        result = await run_step1(mock_config)
+        result = await run_news_pipeline(mock_config)
 
         mock_pipeline_class.assert_called_once()
         assert result is mock_result
 
     @pytest.mark.asyncio
-    async def test_step1_handles_failure(self, mock_config):
-        """run_step1 should return empty result on failure."""
+    async def test_news_pipeline_handles_failure(self, mock_config):
+        """run_news_pipeline should return empty result on failure."""
         mock_config.alpha_vantage_api_key = ""
         mock_config.finnhub_api_key = ""
         mock_config.lm_studio_base_url = ""
@@ -155,22 +155,22 @@ class TestRunStep1:
         with patch("main.NewsPipeline") as mock_pipeline_class:
             mock_pipeline_class.side_effect = Exception("API key missing")
 
-            result = await run_step1(mock_config)
+            result = await run_news_pipeline(mock_config)
 
             assert result.active_sectors == []
             assert result.operations == []
             assert result.fallback_used is True
 
 
-# ── Step 2 tests ─────────────────────────────────────────────────────
+# ── Signal Generation tests ─────────────────────────────────────────────────────
 
-class TestRunStep2:
-    """Tests for run_step2 (Signal Generation)."""
+class TestSignalGeneration:
+    """Tests for run_signal_generation (Signal Generation)."""
 
     @pytest.mark.asyncio
     @patch("main.SignalEngine")
-    async def test_step2_returns_signals(self, mock_engine_class, mock_config):
-        """run_step2 should return signals for given symbols."""
+    async def test_signal_generation_returns_signals(self, mock_engine_class, mock_config):
+        """run_signal_generation should return signals for given symbols."""
         mock_signals = [
             TechnicalSignal(symbol="AAPL", direction="buy", confidence=0.85, score=0.45, reasoning="test"),
         ]
@@ -179,15 +179,15 @@ class TestRunStep2:
         mock_instance.reset_dedup = MagicMock()
         mock_engine_class.return_value = mock_instance
 
-        result = await run_step2(["AAPL", "MSFT"], mock_config)
+        result = await run_signal_generation(["AAPL", "MSFT"], mock_config)
 
         assert len(result) == 1
         assert result[0].symbol == "AAPL"
         mock_instance.reset_dedup.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_step2_returns_empty_on_failure(self, mock_config):
-        """run_step2 should return empty list on persistent failure."""
+    async def test_signal_generation_returns_empty_on_failure(self, mock_config):
+        """run_signal_generation should return empty list on persistent failure."""
         mock_config.twelve_data_api_key = ""
         mock_config.alpaca_api_key = ""
         mock_config.alpaca_secret_key = ""
@@ -195,20 +195,20 @@ class TestRunStep2:
         with patch("main.SignalEngine") as mock_engine_class:
             mock_engine_class.side_effect = Exception("Connection failed")
 
-            result = await run_step2(["AAPL"], mock_config)
+            result = await run_signal_generation(["AAPL"], mock_config)
 
             assert result == []
 
 
-# ── Step 3 tests ─────────────────────────────────────────────────────
+# ── Execution tests ─────────────────────────────────────────────────────
 
-class TestRunStep3:
-    """Tests for run_step3 (Execution)."""
+class TestOrderExecution:
+    """Tests for run_order_execution (Execution)."""
 
     @pytest.mark.asyncio
     @patch("main.ExecutionEngine")
-    async def test_step3_returns_result(self, mock_engine_class, mock_config):
-        """run_step3 should return ExecutionResult."""
+    async def test_order_execution_returns_result(self, mock_engine_class, mock_config):
+        """run_order_execution should return ExecutionResult."""
         mock_result = MagicMock(spec=ExecutionResult)
         mock_result.orders = []
         mock_result.fills = {}
@@ -220,15 +220,15 @@ class TestRunStep3:
         signals = [
             TechnicalSignal(symbol="AAPL", direction="buy", confidence=0.85, score=0.45, reasoning="test"),
         ]
-        result = await run_step3(signals, mock_config)
+        result = await run_order_execution(signals, mock_config)
 
         assert result is mock_result
         mock_instance.run.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_step3_returns_empty_on_no_signals(self, mock_config):
-        """run_step3 should return empty result when no signals provided."""
-        result = await run_step3([], mock_config)
+    async def test_order_execution_returns_empty_on_no_signals(self, mock_config):
+        """run_order_execution should return empty result when no signals provided."""
+        result = await run_order_execution([], mock_config)
 
         assert isinstance(result, ExecutionResult)
         assert len(result.orders) == 0
@@ -240,15 +240,15 @@ class TestRunCycle:
     """Tests for the full run_cycle orchestration."""
 
     @pytest.mark.asyncio
-    @patch("main.run_step1")
-    @patch("main.run_step2")
-    @patch("main.run_step3")
+    @patch("main.run_news_pipeline")
+    @patch("main.run_signal_generation")
+    @patch("main.run_order_execution")
     @patch("main._persist_signals")
     async def test_cycle_runs_steps_sequentially(
-        self, mock_persist, mock_step3, mock_step2, mock_step1, mock_config,
+        self, mock_persist_signals, mock_order_execution, mock_signal_generation, mock_news_pipeline, mock_config,
     ):
-        """run_cycle should execute Step 1 -> Step 2 -> Step 3 in order."""
-        mock_step1.return_value = MagicMock(
+        """run_cycle should execute News Analysis -> Signal Generation -> Execution in order."""
+        mock_news_pipeline.return_value = MagicMock(
             active_sectors=[MagicMock(sector="AI", stocks=["AAPL"], direction="buy", confidence=0.85, reasoning="test")],
             catalysts=[],
             operations=[
@@ -259,10 +259,10 @@ class TestRunCycle:
             fallback_used=False,
             date_used=datetime.now(timezone.utc).isoformat(),
         )
-        mock_step2.return_value = [
+        mock_signal_generation.return_value = [
             TechnicalSignal(symbol="AAPL", direction="buy", confidence=0.85, score=0.45, reasoning="test"),
         ]
-        mock_step3.return_value = MagicMock(
+        mock_order_execution.return_value = MagicMock(
             orders=[MagicMock()],
             fills={"AAPL": {"status": "filled"}},
             errors=[],
@@ -271,23 +271,23 @@ class TestRunCycle:
         await run_cycle()
 
         # Verify sequential order
-        step1_call = mock_step1.call_args
-        step2_call = mock_step2.call_args
-        step3_call = mock_step3.call_args
+        step1_call = mock_news_pipeline.call_args
+        step2_call = mock_signal_generation.call_args
+        step3_call = mock_order_execution.call_args
 
         assert step1_call is not None
         assert step2_call is not None
         assert step3_call is not None
 
     @pytest.mark.asyncio
-    @patch("main.run_step1")
-    @patch("main.run_step2")
-    @patch("main.run_step3")
+    @patch("main.run_news_pipeline")
+    @patch("main.run_signal_generation")
+    @patch("main.run_order_execution")
     async def test_cycle_skips_on_no_news(
-        self, mock_step3, mock_step2, mock_step1, mock_config,
+        self, mock_order_execution, mock_signal_generation, mock_news_pipeline, mock_config,
     ):
-        """run_cycle should skip Steps 2/3 when Step 1 produces no results."""
-        mock_step1.return_value = MagicMock(
+        """run_cycle should skip Steps 2/3 when News Analysis produces no results."""
+        mock_news_pipeline.return_value = MagicMock(
             active_sectors=[],
             catalysts=[],
             operations=[],
@@ -299,18 +299,18 @@ class TestRunCycle:
 
         await run_cycle()
 
-        mock_step2.assert_not_called()
-        mock_step3.assert_not_called()
+        mock_signal_generation.assert_not_called()
+        mock_order_execution.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("main.run_step1")
-    @patch("main.run_step2")
-    @patch("main.run_step3")
+    @patch("main.run_news_pipeline")
+    @patch("main.run_signal_generation")
+    @patch("main.run_order_execution")
     async def test_cycle_skips_execution_on_no_signals(
-        self, mock_step3, mock_step2, mock_step1, mock_config,
+        self, mock_order_execution, mock_signal_generation, mock_news_pipeline, mock_config,
     ):
-        """run_cycle should skip Step 3 when no signals are generated."""
-        mock_step1.return_value = MagicMock(
+        """run_cycle should skip Execution when no signals are generated."""
+        mock_news_pipeline.return_value = MagicMock(
             active_sectors=[MagicMock(sector="AI", stocks=["AAPL"], direction="buy", confidence=0.85, reasoning="test")],
             catalysts=[],
             operations=[MagicMock(symbol="AAPL", direction="buy", confidence=0.85, reasoning="test")],
@@ -319,11 +319,11 @@ class TestRunCycle:
             fallback_used=False,
             date_used=datetime.now(timezone.utc).isoformat(),
         )
-        mock_step2.return_value = []
+        mock_signal_generation.return_value = []
 
         await run_cycle()
 
-        mock_step3.assert_not_called()
+        mock_order_execution.assert_not_called()
 
 
 # ── Signal persistence tests ─────────────────────────────────────────
@@ -397,12 +397,12 @@ class TestLogging:
     """Tests for structured logging."""
 
     @pytest.mark.asyncio
-    @patch("main.run_step1")
-    @patch("main.run_step2")
-    @patch("main.run_step3")
-    async def test_cycle_logs_to_file(self, mock_step3, mock_step2, mock_step1, mock_config, tmp_path):
+    @patch("main.run_news_pipeline")
+    @patch("main.run_signal_generation")
+    @patch("main.run_order_execution")
+    async def test_cycle_logs_to_file(self, mock_order_execution, mock_signal_generation, mock_news_pipeline, mock_config, tmp_path):
         """run_cycle should produce structured JSON log entries."""
-        mock_step1.return_value = MagicMock(
+        mock_news_pipeline.return_value = MagicMock(
             active_sectors=[MagicMock(sector="AI", stocks=["AAPL"], direction="buy", confidence=0.85, reasoning="test")],
             catalysts=[],
             operations=[MagicMock(symbol="AAPL", direction="buy", confidence=0.85, reasoning="test")],
@@ -411,10 +411,10 @@ class TestLogging:
             fallback_used=False,
             date_used=datetime.now(timezone.utc).isoformat(),
         )
-        mock_step2.return_value = [
+        mock_signal_generation.return_value = [
             TechnicalSignal(symbol="AAPL", direction="buy", confidence=0.85, score=0.45, reasoning="test"),
         ]
-        mock_step3.return_value = MagicMock(
+        mock_order_execution.return_value = MagicMock(
             orders=[MagicMock()],
             fills={},
             errors=[],

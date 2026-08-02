@@ -2,7 +2,7 @@
 """Stock Market Expert — Orchestrator entry point.
 
 Runs the full pipeline in a continuous loop:
-  Step 1 (News Analysis) -> Step 2 (Signal Generation) -> Step 3 (Execution)
+  News Analysis (News Analysis) -> Signal Generation (Signal Generation) -> Execution (Execution)
 
 Configurable via .env:
   EXECUTION_INTERVAL    — seconds between cycles (default: 7200 / 2 hours)
@@ -65,8 +65,8 @@ signal.signal(signal.SIGTERM, _handle_signal)
 
 # ── Cycle functions ───────────────────────────────────────────────────
 
-async def run_step1(cfg: object) -> NewsPipelineResult:
-    """Execute Step 1: News Analysis.
+async def run_news_pipeline(cfg: object) -> NewsPipelineResult:
+    """Execute News Analysis.
 
     Returns the news pipeline result (active sectors, catalysts, operations).
     On persistent failure, returns an empty result so the pipeline can continue.
@@ -83,7 +83,7 @@ async def run_step1(cfg: object) -> NewsPipelineResult:
         )
         return pipeline.run()
     except Exception as exc:
-        _get_logger().error(f"Step 1 failed: {exc}")
+        _get_logger().error(f"News Analysis failed: {exc}")
         return NewsPipelineResult(
             active_sectors=[],
             catalysts=[],
@@ -95,11 +95,11 @@ async def run_step1(cfg: object) -> NewsPipelineResult:
         )
 
 
-async def run_step2(
+async def run_signal_generation(
     symbols: list[str],
     cfg: object,
 ) -> list[TechnicalSignal]:
-    """Execute Step 2: Signal Generation with retry.
+    """Execute Signal Generation with retry.
 
     Retries with backoff until success or deadline expires.
     """
@@ -132,18 +132,18 @@ async def run_step2(
             deadline=deadline,
         )
     except DeadlineExceededError:
-        _get_logger().warning("Step 2 deadline exceeded — skipping cycle")
+        _get_logger().warning("Signal Generation deadline exceeded — skipping cycle")
         return []
     except Exception as exc:
-        _get_logger().error(f"Step 2 failed after retries: {exc}")
+        _get_logger().error(f"Signal Generation failed after retries: {exc}")
         return []
 
 
-async def run_step3(
+async def run_order_execution(
     signals: list[TechnicalSignal],
     cfg: object,
 ) -> ExecutionResult:
-    """Execute Step 3: Order Execution with retry.
+    """Execute Order Execution with retry.
 
     Retries with backoff until success or deadline expires.
     """
@@ -172,17 +172,17 @@ async def run_step3(
             deadline=deadline,
         )
     except DeadlineExceededError:
-        _get_logger().warning("Step 3 deadline exceeded — skipping cycle")
+        _get_logger().warning("Execution deadline exceeded — skipping cycle")
         return ExecutionResult()
     except Exception as exc:
-        _get_logger().error(f"Step 3 failed after retries: {exc}")
+        _get_logger().error(f"Execution failed after retries: {exc}")
         return ExecutionResult()
 
 
 # ── Main loop ─────────────────────────────────────────────────────────
 
 async def run_cycle() -> None:
-    """Run one complete execution cycle (Step 1 -> Step 2 -> Step 3)."""
+    """Run one complete execution cycle (News Analysis -> Signal Generation -> Execution)."""
     log = _get_logger()
     cycle_start = datetime.now(timezone.utc)
     cycle_ts = cycle_start.isoformat()
@@ -191,16 +191,16 @@ async def run_cycle() -> None:
     log.info(f"Cycle started at {cycle_ts}")
     log.info(f"{'='*60}")
 
-    # ── Step 1: News Analysis ───────────────────────────────────────
-    log.info(">>> Step 1: News Analysis")
-    news_result = await run_step1(config)
+    # ── News Analysis ───────────────────────────────────────
+    log.info(">>> News Analysis")
+    news_result = await run_news_pipeline(config)
 
     if not news_result.active_sectors and not news_result.operations:
-        log.warning("Step 1 produced no actionable results — skipping cycle")
+        log.warning("News Analysis produced no actionable results — skipping cycle")
         return
 
-    # ── Step 2: Signal Generation ───────────────────────────────────
-    log.info(">>> Step 2: Signal Generation")
+    # ── Signal Generation ───────────────────────────────────
+    log.info(">>> Signal Generation")
 
     # Collect symbols from operations and active sectors
     symbols: set[str] = set()
@@ -210,16 +210,16 @@ async def run_cycle() -> None:
         for s in sector.stocks:
             symbols.add(s)
 
-    signals = await run_step2(list(symbols), config)
+    signals = await run_signal_generation(list(symbols), config)
     log.info(f"Generated {len(signals)} signals")
 
     if not signals:
         log.warning("No signals generated — skipping execution")
         return
 
-    # ── Step 3: Execution ───────────────────────────────────────────
-    log.info(">>> Step 3: Execution")
-    exec_result = await run_step3(signals, config)
+    # ── Execution ───────────────────────────────────────────
+    log.info(">>> Execution")
+    exec_result = await run_order_execution(signals, config)
     log.info(
         f"Executed {len(exec_result.orders)} orders, "
         f"{len(exec_result.fills)} fills, "
