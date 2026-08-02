@@ -216,12 +216,6 @@ class NewsPipeline:
                 if ts.ticker:
                     symbols.add(ts.ticker)
 
-            # Fallback: heuristic scan of headline for uppercase words (2-5 chars)
-            for word in item.headline.split():
-                word = word.strip(".,!?;:")
-                if 2 <= len(word) <= 5 and word.isupper() and word.isalpha():
-                    symbols.add(word)
-
         # Filter out common non-ticker words
         non_tickers = {
             "THE", "AND", "FOR", "NEW", "NOT", "BUT", "ALL", "HAS",
