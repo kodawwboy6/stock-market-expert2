@@ -253,4 +253,6 @@ agent created a ticket in scratch. prompt to remove it and create github ticket 
 
 the ticket was created to change only pipline.py. manual update that ticket to change every code. however i forget to update title and so the agent update one code only. prompt again to tell agent the title is misleading.
 
+the issue is fixed. then i ask agent to create AGENT.md for coding standard.
+
 TODO: try improve-codebase-architecture
