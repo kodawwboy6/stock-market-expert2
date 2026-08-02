@@ -80,3 +80,37 @@ def run_pipeline(category: Optional[str] = None):
     cat = category or cfg.news_category
     ...
 ```
+
+### Function Naming
+
+Function names must describe **what the function does**, not **how many steps** it performs. Avoid numbered or sequential names like `run_step1`, `run_step2`, `process_data_3`, etc.
+
+- **Use descriptive names** that convey the specific action or purpose: `fetch_stock_quotes`, `validate_portfolio`, `calculate_moving_average`.
+- **If a function calls multiple sub-steps internally**, name it after the overall goal: `analyze_market_trend` (not `run_step1`).
+- **If you need multiple distinct steps**, extract them into separate functions with meaningful names and call them from a single orchestrator.
+
+#### Bad
+
+```python
+def run_step1():
+    ...
+
+def run_step2():
+    ...
+
+def fetch_data_3():
+    ...
+```
+
+#### Good
+
+```python
+def fetch_stock_quotes():
+    ...
+
+def validate_portfolio():
+    ...
+
+def calculate_moving_average():
+    ...
+```
