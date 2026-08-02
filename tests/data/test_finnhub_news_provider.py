@@ -20,11 +20,12 @@ class TestFinnhubNewsProvider:
                 "headline": "Test Headline",
                 "url": "https://example.com/test",
                 "source": "Test Source",
-                "datetime": "2024-01-15T10:00:00Z",
+                "datetime": 1705312800,
                 "summary": "Test summary",
-                "related": ["AAPL"],
-                "symbols": ["AAPL"],
+                "related": "AAPL",
                 "category": "general",
+                "id": 12345,
+                "image": "https://example.com/image.jpg",
             }
         ]
 
@@ -39,11 +40,12 @@ class TestFinnhubNewsProvider:
             assert result[0].headline == "Test Headline"
             assert result[0].url == "https://example.com/test"
             assert result[0].source == "Test Source"
-            assert result[0].time_published == "2024-01-15T10:00:00Z"
+            assert result[0].datetime == 1705312800
             assert result[0].summary == "Test summary"
-            assert result[0].related == ["AAPL"]
-            assert result[0].symbols == ["AAPL"]
+            assert result[0].related == "AAPL"
             assert result[0].category == "general"
+            assert result[0].id == 12345
+            assert result[0].image == "https://example.com/image.jpg"
 
     def test_fetch_company_news_handles_empty_response(self):
         """Fetching company news with no results should return an empty list."""
@@ -109,7 +111,7 @@ class TestFetchCompanyNewsWithRetry:
                 "headline": "Test Headline",
                 "url": "https://example.com/test",
                 "source": "Test Source",
-                "datetime": "2024-01-15T10:00:00Z",
+                "datetime": 1705312800,
             }
         ]
 

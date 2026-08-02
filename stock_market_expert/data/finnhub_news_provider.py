@@ -15,16 +15,22 @@ from stock_market_expert.config.loader import load_config
 
 @dataclasses.dataclass
 class CompanyNews:
-    """A single company news item from Finnhub."""
+    """A single company news item from Finnhub.
+
+    Fields verified against: https://finnhub.io/docs/api/company-news
+    Live response keys: category, datetime (Unix timestamp), headline, id,
+    image, related (string), source, summary, url
+    """
 
     headline: str
     url: str
     source: str
-    time_published: str
+    datetime: int  # Unix timestamp from Finnhub API
     summary: Optional[str] = None
-    related: Optional[list[str]] = None
-    symbols: Optional[list[str]] = None
+    related: Optional[str] = None  # single ticker string per official schema
     category: Optional[str] = None
+    id: Optional[int] = None
+    image: Optional[str] = None
 
 
 class FinnhubNewsProvider:
@@ -82,11 +88,12 @@ class FinnhubNewsProvider:
                     headline=item.get("headline", ""),
                     url=item.get("url", ""),
                     source=item.get("source", ""),
-                    time_published=item.get("datetime", ""),
+                    datetime=item.get("datetime", 0),
                     summary=item.get("summary", None),
                     related=item.get("related", None),
-                    symbols=item.get("symbols", None),
                     category=item.get("category", None),
+                    id=item.get("id", None),
+                    image=item.get("image", None),
                 )
             )
 
