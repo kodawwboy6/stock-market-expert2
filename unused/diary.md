@@ -255,4 +255,13 @@ the ticket was created to change only pipline.py. manual update that ticket to c
 
 the issue is fixed. then i ask agent to create AGENT.md for coding standard.
 
+#### api call
+
+I've found that the codes about the alpha vantage api call are not following the spec of it. so i prompt:
+```
+/grill-with-docs add infomation about external api with their official document. for example, alpha vantage api document is here: https://www.alphavantage.co/documentation/#news-sentiment. Add the content required by this project only.
+```
+
+agent complete the doc with wrong understanding of api. prompt to ask it use `/research` for this task, and make sure it is 100% correct.
+
 TODO: try improve-codebase-architecture
