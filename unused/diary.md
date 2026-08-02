@@ -266,6 +266,6 @@ agent complete the doc with wrong understanding of api. prompt to ask it use `/r
 
 4 tickets was generated for 4 api providers.
 
-a new skill `/do-ticket` is created for the ease of working on ticket.
+a new skill `/do-ticket` is created for the ease of working on ticket. it performs very well for working on those 4 tickets
 
 TODO: try improve-codebase-architecture

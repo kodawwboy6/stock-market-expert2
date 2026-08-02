@@ -1,6 +1,8 @@
 """Alpaca provider for limited real-time quote data.
 
-Fetches real-time quotes and account balance from Alpaca paper trading API.
+Fetches real-time quotes, historical trade data, and account balance
+from Alpaca APIs. Trading endpoints use the trading API base URL,
+while market data endpoints use the market data API base URL.
 """
 
 import os
@@ -13,35 +15,46 @@ from stock_market_expert.errors.handler import retry_with_backoff
 
 
 class AlpacaProvider:
-    """Client for Alpaca paper trading API.
+    """Client for Alpaca trading and market data APIs.
 
-    Provides real-time quotes and portfolio balance for execution.
+    Provides real-time quotes, historical trades, and portfolio balance
+    for execution. Trading endpoints use the trading API, market data
+    endpoints use the market data API.
     """
 
     DEFAULT_BASE_URL = "https://paper-api.alpaca.markets"
+    DEFAULT_MARKET_DATA_BASE_URL = "https://data.alpaca.markets"
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        market_data_base_url: Optional[str] = None,
     ):
         """Initialize the Alpaca provider.
 
         Args:
             api_key: Alpaca API key. Defaults to ALPACA_API_KEY env var.
             secret_key: Alpaca secret key. Defaults to ALPACA_SECRET_KEY env var.
-            base_url: Alpaca API base URL. Defaults to ALPACA_BASE_URL env var.
+            base_url: Trading API base URL. Defaults to ALPACA_BASE_URL env var.
+            market_data_base_url: Market data API base URL.
+                Defaults to ALPACA_MARKET_DATA_BASE_URL env var.
         """
         self.api_key = api_key or os.getenv("ALPACA_API_KEY", "")
         self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY", "")
         self.base_url = base_url or os.getenv("ALPACA_BASE_URL", self.DEFAULT_BASE_URL)
+        self.market_data_base_url = market_data_base_url or os.getenv(
+            "ALPACA_MARKET_DATA_BASE_URL", self.DEFAULT_MARKET_DATA_BASE_URL
+        )
 
         if not self.api_key or not self.secret_key:
             raise ValueError("ALPACA_API_KEY and ALPACA_SECRET_KEY environment variables are required")
 
     def get_realtime_quote(self, symbol: str) -> dict[str, Any]:
         """Fetch real-time quote for a single symbol.
+
+        Uses the market data API (data.alpaca.markets) for quotes.
 
         Args:
             symbol: Stock ticker symbol.
@@ -52,7 +65,7 @@ class AlpacaProvider:
         Raises:
             Exception: If the API request fails.
         """
-        url = f"{self.base_url}/quotes/{symbol}"
+        url = f"{self.market_data_base_url}/v2/quotes/{symbol}"
         headers = {
             "Apca-Api-Key-Id": self.api_key,
             "Apca-Api-Secret-Key": self.secret_key,
@@ -61,10 +74,7 @@ class AlpacaProvider:
         def _fetch():
             response = httpx.get(url, headers=headers, timeout=15.0)
             response.raise_for_status()
-            data = response.json()
-            if not data:
-                raise ValueError(f"No quote data for {symbol}")
-            return data
+            return response.json()
 
         result = retry_with_backoff(func=_fetch)
 
@@ -80,10 +90,13 @@ class AlpacaProvider:
     def get_portfolio_balance(self) -> dict[str, Any]:
         """Fetch current portfolio balance and positions.
 
+        Uses the trading API (paper-api.alpaca.markets) for account
+        and positions endpoints.
+
         Returns:
             Dict with portfolio cash, equity, and positions per symbol.
         """
-        url = f"{self.base_url}/account"
+        url = f"{self.base_url}/v2/account"
         headers = {
             "Apca-Api-Key-Id": self.api_key,
             "Apca-Api-Secret-Key": self.secret_key,
@@ -95,7 +108,7 @@ class AlpacaProvider:
             return response.json()
 
         def _fetch_positions():
-            pos_url = f"{self.base_url}/positions"
+            pos_url = f"{self.base_url}/v2/positions"
             response = httpx.get(pos_url, headers=headers, timeout=15.0)
             response.raise_for_status()
             return response.json()
@@ -107,6 +120,11 @@ class AlpacaProvider:
             "cash": float(account.get("cash", 0)),
             "equity": float(account.get("equity", 0)),
             "buying_power": float(account.get("buying_power", 0)),
+            "portfolio_value": float(account.get("portfolio_value", 0)),
+            "status": account.get("status", ""),
+            "currency": account.get("currency", ""),
+            "shorting_enabled": account.get("shorting_enabled", False),
+            "multiplier": account.get("multiplier", ""),
             "positions": {
                 pos["symbol"]: {
                     "qty": float(pos["qty"]),
@@ -125,7 +143,9 @@ class AlpacaProvider:
         end_date: str,
         timeframe: str = "1D",
     ) -> list[dict[str, Any]]:
-        """Fetch historical bar data for a symbol.
+        """Fetch historical trade data for a symbol.
+
+        Uses the market data API (data.alpaca.markets) for trade data.
 
         Args:
             symbol: Stock ticker symbol.
@@ -136,7 +156,7 @@ class AlpacaProvider:
         Returns:
             List of bar dicts with keys: datetime, open, high, low, close, volume.
         """
-        url = f"{self.base_url}/stocks/{symbol}/trades"
+        url = f"{self.market_data_base_url}/v2/stocks/{symbol}/trades"
         headers = {
             "Apca-Api-Key-Id": self.api_key,
             "Apca-Api-Secret-Key": self.secret_key,
@@ -152,7 +172,8 @@ class AlpacaProvider:
             response.raise_for_status()
             return response.json()
 
-        trades = retry_with_backoff(func=_fetch)
+        response = retry_with_backoff(func=_fetch)
+        trades = response.get("trades", [])
 
         # Normalize to OHLCV format
         return [
