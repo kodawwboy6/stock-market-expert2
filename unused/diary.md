@@ -245,4 +245,12 @@ prompt:
 
 agent get several fix about env without creating ticket
 
+```
+/to-ticket create github ticket to fix this issue: i don't know the pattern that place hardcode value when config value is missing, like pipline.py:85. config has default value on load. code should assume there is always a value for each config param.
+```
+
+agent created a ticket in scratch. prompt to remove it and create github ticket instead.
+
+the ticket was created to change only pipline.py. manual update that ticket to change every code. however i forget to update title and so the agent update one code only. prompt again to tell agent the title is misleading.
+
 TODO: try improve-codebase-architecture
