@@ -22,7 +22,7 @@ class TwelveDataProvider:
     BASE_URL = "https://api.twelvedata.com"
 
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize the Twelve Data provider.
+        """Initialize the Twelve data provider.
 
         Args:
             api_key: Twelve Data API key. Defaults to TWELVE_DATA_API_KEY env var.
@@ -74,7 +74,9 @@ class TwelveDataProvider:
             response.raise_for_status()
             data = response.json()
             if data.get("status") == "error":
-                raise ValueError(f"Twelve Data API error: {data.get('message', 'unknown error')}")
+                raise ValueError(
+                    f"Twelve Data API error: {data.get('message', 'unknown error')}"
+                )
             return data.get("values", [])
 
         fallback_data = None
@@ -112,27 +114,40 @@ class TwelveDataProvider:
         return None
 
     def _normalize_ohlcv(self, raw_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Normalize raw Twelve Data response to standard OHLCV format."""
+        """Normalize raw Twelve Data response to standard OHLCV format.
+
+        Per official API docs, all value fields (open, high, low, close, volume)
+        are returned as strings. This method parses them to their proper numeric types.
+
+        Args:
+            raw_data: List of dicts with string values from the API.
+
+        Returns:
+            List of dicts with properly typed values.
+        """
         normalized = []
         for item in raw_data:
             normalized.append({
                 "datetime": item.get("datetime", ""),
-                "open": float(item.get("open", 0)),
-                "high": float(item.get("high", 0)),
-                "low": float(item.get("low", 0)),
-                "close": float(item.get("close", 0)),
-                "volume": int(item.get("volume", 0)),
+                "open": float(item.get("open", "0")),
+                "high": float(item.get("high", "0")),
+                "low": float(item.get("low", "0")),
+                "close": float(item.get("close", "0")),
+                "volume": int(item.get("volume", "0")),
             })
         return normalized
 
     def get_quotes(self, symbols: list[str]) -> list[dict[str, Any]]:
         """Fetch real-time quotes for multiple symbols.
 
+        Per official API docs, the /price endpoint only returns a `price` field
+        (string). It does NOT return bid, ask, or volume.
+
         Args:
             symbols: List of stock ticker symbols.
 
         Returns:
-            List of quote dicts with keys: symbol, last_price, bid, ask, volume.
+            List of quote dicts with keys: symbol, last_price.
         """
         quotes = []
         for symbol in symbols:
@@ -145,21 +160,21 @@ class TwelveDataProvider:
                 response = httpx.get(url, params=params, timeout=15.0)
                 response.raise_for_status()
                 data = response.json()
-                if data.get("status") == "ok":
+                # /price endpoint returns only {"price": string} — no status field
+                if "price" in data and data["price"]:
                     quotes.append({
                         "symbol": symbol,
-                        "last_price": float(data.get("price", 0)),
-                        "bid": float(data.get("bid", 0)),
-                        "ask": float(data.get("ask", 0)),
-                        "volume": int(data.get("volume", 0)),
+                        "last_price": float(data["price"]),
+                    })
+                else:
+                    quotes.append({
+                        "symbol": symbol,
+                        "last_price": 0.0,
                     })
             except Exception as e:
                 quotes.append({
                     "symbol": symbol,
-                    "last_price": 0,
-                    "bid": 0,
-                    "ask": 0,
-                    "volume": 0,
+                    "last_price": 0.0,
                     "error": str(e),
                 })
         return quotes
