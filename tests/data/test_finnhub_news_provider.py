@@ -25,7 +25,6 @@ class TestFinnhubNewsProvider:
                 "related": "AAPL",
                 "category": "general",
                 "id": 12345,
-                "image": "https://example.com/image.jpg",
             }
         ]
 
@@ -45,7 +44,7 @@ class TestFinnhubNewsProvider:
             assert result[0].related == "AAPL"
             assert result[0].category == "general"
             assert result[0].id == 12345
-            assert result[0].image == "https://example.com/image.jpg"
+            assert result[0].symbol == "AAPL"
 
     def test_fetch_company_news_handles_empty_response(self):
         """Fetching company news with no results should return an empty list."""
