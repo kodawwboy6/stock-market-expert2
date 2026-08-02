@@ -26,11 +26,11 @@ class CompanyNews:
     url: str
     source: str
     datetime: int  # Unix timestamp from Finnhub API
+    symbol: str  # input symbol
     summary: Optional[str] = None
     related: Optional[str] = None  # single ticker string per official schema
     category: Optional[str] = None
     id: Optional[int] = None
-    image: Optional[str] = None
 
 
 class FinnhubNewsProvider:
@@ -89,11 +89,11 @@ class FinnhubNewsProvider:
                     url=item.get("url", ""),
                     source=item.get("source", ""),
                     datetime=item.get("datetime", 0),
+                    symbol=symbol,
                     summary=item.get("summary", None),
                     related=item.get("related", None),
                     category=item.get("category", None),
                     id=item.get("id", None),
-                    image=item.get("image", None),
                 )
             )
 
